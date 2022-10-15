@@ -1,5 +1,4 @@
-#include <stdbool.h>
-#include <stdio.h>
+#include <cstdio>
 #include "fs_structs.h"
 
 
@@ -130,7 +129,7 @@ int printDiskInfo(const char *const path)
 {
 	int res = 0;
 	FILE *const f = fopen(path, "rb"); // TODO: Use open()/read()/close()?
-	Mbr mbr = {0};
+	Mbr mbr = {};
 	if(f != NULL)
 	{
 		if(fread(&mbr, sizeof(Mbr), 1, f) != 1)
@@ -185,7 +184,7 @@ int printDiskInfo(const char *const path)
 
 		if(fseek(f, 512 * info->startLba, SEEK_SET) == 0)
 		{
-			Vbr br = {0};
+			Vbr br = {};
 			if(fread(&br, sizeof(Vbr), 1, f) != 1)
 			{
 				res = 3;

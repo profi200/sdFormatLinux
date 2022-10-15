@@ -1,15 +1,10 @@
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <getopt.h>
 #include "fs_printer.h"
 #include "format.h"
-
-
-#define FLAGS_FORCE_FAT32  (1u)
-#define FLAGS_PRINT_FS     (1u<<1)
-#define FLAGS_VERBOSE      (1u<<2)
 
 
 
@@ -20,6 +15,9 @@ static void printHelp(void)
 	     "Options:\n"
 	     "  -c, --capacity SECTORS   Override capacity for fake cards or image files.\n"
 	     "  -d, --dry-run            Only pretend to format the card (non-destructive).\n"
+	     "  -e, --erase TYPE         Erases the whole card before formatting (aka TRIM).\n"
+	     "                           No effect with USB card readers.\n"
+	     "                           TYPE can be 'trim' or 'secure'.\n"
 	     "  -f, --force-fat32        Force format SDXC cards as FAT32.\n"
 	     "                           No effect on other types of SD cards.\n"
 	     "  -l, --label LABEL        Volume label. Maximum 11 upper case characters.\n"
@@ -30,51 +28,10 @@ static void printHelp(void)
 
 int main(const int argc, char *const argv[])
 {
-	/*if(argc != 2)
-	{
-		fputs("Not enough arguments.", stderr);
-		return 1;
-	}*/
-
-	//FormatParams params = {0};
-	/*getAndPrintFormatParams(1u<<11, false, &params);
-	getAndPrintFormatParams(1u<<12, false, &params);
-	getAndPrintFormatParams(1u<<13, false, &params);
-	getAndPrintFormatParams(1u<<14, false, &params);
-	getAndPrintFormatParams(1u<<15, false, &params);
-	getAndPrintFormatParams(1u<<16, false, &params);
-	getAndPrintFormatParams(1u<<17, false, &params);
-	getAndPrintFormatParams(1u<<18, false, &params);
-	getAndPrintFormatParams(1u<<19, false, &params);
-	getAndPrintFormatParams(1u<<20, false, &params);
-	getAndPrintFormatParams(1u<<21, false, &params);
-	getAndPrintFormatParams(1u<<22, false, &params);
-	getAndPrintFormatParams(1u<<23, false, &params);
-	getAndPrintFormatParams(1u<<24, false, &params);
-	getAndPrintFormatParams(1u<<25, false, &params);
-	getAndPrintFormatParams(1u<<26, false, &params);
-	getAndPrintFormatParams(1u<<26, true, &params);
-	getAndPrintFormatParams(1u<<27, false, &params);
-	getAndPrintFormatParams(1u<<27, true, &params);
-	getAndPrintFormatParams(1u<<28, false, &params);
-	getAndPrintFormatParams(1u<<28, true, &params);
-	getAndPrintFormatParams(1u<<29, false, &params);
-	getAndPrintFormatParams(1u<<29, true, &params);
-	getAndPrintFormatParams(1u<<30, false, &params);
-	getAndPrintFormatParams(1u<<30, true, &params);
-	getAndPrintFormatParams(1u<<31, false, &params);
-	getAndPrintFormatParams(1u<<31, true, &params);*/
-	//getAndPrintFormatParams(7829504, false, &params);  // Toshiba 4 GB.
-	//getAndPrintFormatParams(3935232, false, &params);  // Panasonic 2 GB.
-	//getAndPrintFormatParams(3862528, false, &params);  // SanDisk 2 GB.
-	//getAndPrintFormatParams(31074304, false, &params); // Hama 16 GB.
-	//formatSd(&params, /*"/dev/mmcblk0"*/ "test_out_img.bin", "TEST12345");
-
-
-	// TODO: Dry run flag so we can test before overwriting the card.
-	// TODO: Overwrite/erase format option?
 	static const struct option long_options[] =
 	{{   "capacity", required_argument, NULL, 'c'},
+	 {    "dry-run",       no_argument, NULL, 'd'},
+	 {      "erase", required_argument, NULL, 'e'},
 	 {"force-fat32",       no_argument, NULL, 'f'},
 	 {      "label", required_argument, NULL, 'l'},
 	 {   "print-fs",       no_argument, NULL, 'p'},
@@ -87,8 +44,8 @@ int main(const int argc, char *const argv[])
 	char label[12] = {0};
 	while(1)
 	{
-		const int c = getopt_long(argc, argv, "c:fl:pvh", long_options, NULL);
-		if(c == (-1)) break;
+		const int c = getopt_long(argc, argv, "c:de:fl:pvh", long_options, NULL);
+		if(c == -1) break;
 
 		switch(c)
 		{
@@ -100,6 +57,22 @@ int main(const int argc, char *const argv[])
 						fputs("Error: Image size 0 or out of range.\n", stderr);
 						return 1;
 					}
+				}
+				break;
+			case 'd':
+				flags |= FLAGS_DRY_RUN;
+				break;
+			case 'e':
+				{
+					u32 eraseFlag = FLAGS_ERASE;
+					if(strcmp(optarg, "secure") == 0)
+						eraseFlag = FLAGS_SECURE_ERASE;
+					else if(strcmp(optarg, "trim") != 0)
+					{
+						fprintf(stderr, "Error: Invalid erase type '%s'.\n", optarg);
+						return 1;
+					}
+					flags |= eraseFlag;
 				}
 				break;
 			case 'f':
@@ -156,11 +129,26 @@ int main(const int argc, char *const argv[])
 	}
 
 	const char *const devPath = argv[optind];
-	if((flags & FLAGS_PRINT_FS) == 0)
+	int res;
+	try
 	{
-		setVerboseMode((flags & FLAGS_VERBOSE) != 0);
-		return formatSd(devPath, (*label != 0 ? label : NULL), (flags & FLAGS_FORCE_FAT32) != 0, overrTotSec);
+		if((flags & FLAGS_PRINT_FS) == 0)
+		{
+			setVerboseMode((flags & FLAGS_VERBOSE) != 0);
+			res = formatSd(devPath, (*label != 0 ? label : NULL), flags, overrTotSec);
+		}
+		else res = printDiskInfo(devPath);
+	}
+	catch(const std::exception& e)
+	{
+		fprintf(stderr, "An exception occured: what(): '%s'\n", e.what());
+		res = 5;
+	}
+	catch(...)
+	{
+		fprintf(stderr, "Unknown exception. Exiting...\n");
+		res = 6;
 	}
 
-	return printDiskInfo(devPath);
+	return res;
 }

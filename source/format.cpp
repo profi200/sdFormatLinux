@@ -1,12 +1,13 @@
-#include <math.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+#include <memory>
+#include <cmath>
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <sys/random.h> // getrandom()...
 #include "types.h"
+#include "format.h"
 #include "fs_structs.h"
 #include "blockdev.h"
 
@@ -42,7 +43,7 @@ static int verbosePuts(const char *str)
 	return res;
 }
 
-static int verbosePrintf(const char *restrict format, ...)
+static int verbosePrintf(const char *format, ...)
 {
 	int res = 0;
 
@@ -445,56 +446,63 @@ static void makeFsFat(const FormatParams *const params, Vbr *const vbr, const ch
 	// TODO
 }*/
 
-u32 formatSd(const char *const path, const char *const label, const bool forceSdxcFat32, const u64 overrTotSec)
+u32 formatSd(const char *const path, const char *const label, const u32 flags, const u64 overrTotSec)
 {
-	if(blkdevOpen(path) != 0) return 2;
+	BlockDev dev;
+	if(dev.open(path, true) != 0) return 2;
 
 	// Allow overriding the capacity only if we create a new image file
 	// or the new capacity is lower.
 	// TODO: Minimum capacity we can format in FAT12.
 	// TODO: Error if capacity is higher than device sectors.
-	u64 totSec = blkdevGetSectors();
+	u64 totSec = dev.getSectors();
 	if(overrTotSec > 0 && (totSec == 0 || overrTotSec < totSec))
 	{
 		// Only truncate regular files.
-		if(totSec == 0) blkdevTruncate(overrTotSec);
+		if(totSec == 0) dev.truncate(overrTotSec);
 		totSec = overrTotSec;
 	}
-	verbosePrintf("SD card has %" PRIu64 " sectors.\n", totSec);
+	verbosePrintf("SD card contains %" PRIu64 " sectors.\n", totSec);
 
-	FormatParams params = {0};
-	getFormatParams(totSec, forceSdxcFat32, &params);
+	if((flags & (FLAGS_ERASE | FLAGS_SECURE_ERASE)) != 0)
+	{
+		verbosePuts("Erasing SD card...");
+
+		// TODO: Apparently not all cards support secure erase.
+		const int discardRes = dev.discardAll((flags & FLAGS_SECURE_ERASE) != 0);
+		if(discardRes == EOPNOTSUPP)
+		{
+			fputs("SD card can't be erased. Ignoring.\n", stderr);
+		}
+		else if(discardRes != 0) return 3;
+	}
+
+	FormatParams params = {};
+	getFormatParams(totSec, (flags & FLAGS_FORCE_FAT32) != 0, &params);
 
 	// For FAT32 we also need to clear the root directory cluster.
 	const size_t bufSize = 512 * (params.partStart + params.fsAreaSize + (params.fatBits == 32 ? params.secPerClus : 0));
-	u8 *buf = (u8*)calloc(1, bufSize);
-	if(buf == NULL)
+	const std::unique_ptr<u8[]> buf(new(std::nothrow) u8[bufSize]);
+	if(!buf)
 	{
 		fputs("Not enough memory.", stderr);
-		blkdevClose();
 		return 3;
 	}
 
 	// Create a new Master Boot Record and partition.
 	// TODO: Allow to make it bootable?
 	verbosePuts("Creating new partition table and partition...");
-	makeMbrPartition(&params, false, (Mbr*)buf);
+	makeMbrPartition(&params, false, (Mbr*)buf.get());
 
 	// Clear filesystem areas and write a new Volume Boot Record.
 	// TODO: Label should be upper case and some chars are not allowed. Implement conversion + checks.
 	//       mkfs.fat allows lower case but warns about it.
 	verbosePuts("Formatting the partition...");
 	const u32 partStart = params.partStart;
-	makeFsFat(&params, (Vbr*)(buf + (512 * partStart)), label);
+	makeFsFat(&params, (Vbr*)(buf.get() + (512 * partStart)), label);
 
-	if(blkdevWriteSectors(buf, 0, bufSize / 512) != 0)
-	{
-		blkdevClose();
-		free(buf);
+	if(dev.write(buf.get(), 0, bufSize / 512) != 0)
 		return 4;
-	}
-	blkdevClose();
-	free(buf);
 
 	puts("Successfully formatted the card.");
 	printFormatParams(&params);

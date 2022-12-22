@@ -10,10 +10,12 @@ DEFINES  :=
 
 # Compiler settings
 ARCH     :=
-CFLAGS   := $(ARCH) -std=c17 -O2 -g -fstrict-aliasing -ffunction-sections \
-			-fdata-sections -Wall -Wextra -Wstrict-aliasing=2
-CXXFLAGS := $(ARCH) -std=c++20 -O2 -g -fstrict-aliasing -ffunction-sections \
-			-fdata-sections -Wall -Wextra -Wstrict-aliasing=2
+CFLAGS   := $(ARCH) -std=c17 -O2 -g -fstrict-aliasing \
+			-ffunction-sections -fdata-sections -Wall -Wextra \
+			-Wstrict-aliasing=2
+CXXFLAGS := $(ARCH) -std=c++20 -O2 -g -fstrict-aliasing \
+			-ffunction-sections -fdata-sections -Wall -Wextra \
+			-Wstrict-aliasing=2
 ASFLAGS  := $(ARCH) -O2 -g -x assembler-with-cpp
 ARFLAGS  := -rcs
 LDFLAGS  := $(ARCH) -O2 -g -Wl,--gc-sections

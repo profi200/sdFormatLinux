@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stdint.h>
-#include <inttypes.h>
+#include <cstdint>
+#include <cinttypes>
 
 
 typedef uint8_t  u8;

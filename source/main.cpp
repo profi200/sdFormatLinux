@@ -14,7 +14,7 @@ static void printHelp(void)
 	     "Usage: sdFormatLinux [OPTIONS...] DEVICE\n\n"
 	     "Options:\n"
 	     "  -c, --capacity SECTORS   Override capacity for fake cards or image files.\n"
-	     "  -d, --dry-run            Only pretend to format the card (non-destructive).\n"
+	     //"  -d, --dry-run            Only pretend to format the card (non-destructive).\n"
 	     "  -e, --erase TYPE         Erases the whole card before formatting (aka TRIM).\n"
 	     "                           No effect with USB card readers.\n"
 	     "                           TYPE can be 'trim' or 'secure'.\n"
@@ -40,8 +40,8 @@ int main(const int argc, char *const argv[])
 	 {         NULL,                 0, NULL,   0}};
 
 	u64 overrTotSec = 0;
-	u32 flags = 0;
-	char label[12] = {0};
+	ArgFlags flags{};
+	char label[12]{};
 	while(1)
 	{
 		const int c = getopt_long(argc, argv, "c:de:fl:pvh", long_options, NULL);
@@ -60,23 +60,23 @@ int main(const int argc, char *const argv[])
 				}
 				break;
 			case 'd':
-				flags |= FLAGS_DRY_RUN;
+				flags.dryRun = 1;
 				break;
 			case 'e':
 				{
-					u32 eraseFlag = FLAGS_ERASE;
-					if(strcmp(optarg, "secure") == 0)
-						eraseFlag = FLAGS_SECURE_ERASE;
-					else if(strcmp(optarg, "trim") != 0)
+					if(strcmp(optarg, "trim") == 0)
+						flags.erase = 1;
+					else if(strcmp(optarg, "secure") == 0)
+						flags.secErase = 1;
+					else
 					{
 						fprintf(stderr, "Error: Invalid erase type '%s'.\n", optarg);
 						return 1;
 					}
-					flags |= eraseFlag;
 				}
 				break;
 			case 'f':
-				flags |= FLAGS_FORCE_FAT32;
+				flags.forceFat32 = 1;
 				break;
 			case 'l':
 				{
@@ -105,10 +105,10 @@ int main(const int argc, char *const argv[])
 				}
 				break;
 			case 'p':
-				flags |= FLAGS_PRINT_FS;
+				flags.printFs = 1;
 				break;
 			case 'v':
-				flags |= FLAGS_VERBOSE;
+				flags.verbose = 1;
 				break;
 			case 'h':
 				printHelp();
@@ -132,9 +132,9 @@ int main(const int argc, char *const argv[])
 	int res;
 	try
 	{
-		if((flags & FLAGS_PRINT_FS) == 0)
+		if(!flags.printFs)
 		{
-			setVerboseMode((flags & FLAGS_VERBOSE) != 0);
+			setVerboseMode(flags.verbose);
 			res = formatSd(devPath, (*label != 0 ? label : NULL), flags, overrTotSec);
 		}
 		else res = printDiskInfo(devPath);

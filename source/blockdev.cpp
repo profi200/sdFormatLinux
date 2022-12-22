@@ -76,6 +76,7 @@ int BlockDev::open(const char *const path, const bool rw) noexcept
 	return res;
 }
 
+// TODO: Use pread()?
 int BlockDev::read(u8 *buf, const u64 sector, const u64 count) const noexcept
 {
 	int res = 0;
@@ -104,6 +105,7 @@ int BlockDev::read(u8 *buf, const u64 sector, const u64 count) const noexcept
 	return res;
 }
 
+// TODO: Use pwrite()?
 int BlockDev::write(const u8 *buf, const u64 sector, const u64 count) noexcept
 {
 	int res = 0;

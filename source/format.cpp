@@ -8,7 +8,8 @@
 #include <sys/random.h> // getrandom()...
 #include "types.h"
 #include "format.h"
-#include "fs_structs.h"
+#include "exfat.h"
+#include "fat.h"
 #include "blockdev.h"
 
 
@@ -79,9 +80,8 @@ static void calcFormatFat(const u32 totSec, FormatParams *const params)
 		u32 tmpSecPerFat;
 		while(1)
 		{
-			// TODO: We probably don't need double here.
-			maxClus      = (double)(totSec - partStart - fsAreaSize) / secPerClus /*+ 1*/; // TODO: We should probably remove the + 1.
-			tmpSecPerFat = ceil((double)((2 + (maxClus /*- 1*/)) * fatBits) / (bytesPerSec * 8)); // TODO: We should probably remove the - 1.
+			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
+			tmpSecPerFat = ceil((double)((2 + maxClus) * fatBits) / (bytesPerSec * 8));
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -129,9 +129,8 @@ static void calcFormatFat32(const u32 totSec, FormatParams *const params)
 		u32 tmpSecPerFat;
 		while(1)
 		{
-			// TODO: We probably don't need double here.
-			maxClus      = (double)(totSec - partStart - fsAreaSize) / secPerClus /*+ 1*/; // TODO: We should probably remove the + 1.
-			tmpSecPerFat = ceil((double)((2 + (maxClus /*- 1*/)) * fatBits) / (bytesPerSec * 8)); // TODO: We should probably remove the - 1.
+			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
+			tmpSecPerFat = ceil((double)((2 + maxClus) * fatBits) / (bytesPerSec * 8));
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -274,7 +273,7 @@ static u32 makeVolId(void)
 
 static u32 lba2chs(u64 lba, const u32 heads, const u32 secPerTrk)
 {
-	if(lba < 16450560)
+	if(lba <= 16450560)
 	{
 		const u32 spc = heads * secPerTrk;
 
@@ -320,10 +319,10 @@ static void makeMbrPartition(const FormatParams *const params, const bool bootab
 	}
 	else if(fatBits == 32)
 	{
-		if((totSec - 1) < 16450560) partType = 0x0B; // FAT32 CHS.
-		else                        partType = 0x0C; // FAT32 LBA.
+		if((totSec - 1) <= 16450560) partType = 0x0B; // FAT32 CHS.
+		else                         partType = 0x0C; // FAT32 LBA.
 	}
-	else                            partType = 0x07; // exFAT.
+	else                             partType = 0x07; // exFAT.
 	mbr->partTable[0].id = partType;
 	verbosePrintf("Partition type: 0x%02" PRIX8 "\n", partType);
 
@@ -379,7 +378,7 @@ static void makeFsFat(const FormatParams *const params, Vbr *const vbr, const ch
 		vbr->fat16.bootSig = 0x29;
 		vbr->fat16.volId   = makeVolId();
 		memcpy(vbr->fat16.volLab, labelBuf, 11);
-		memcpy(vbr->fat16.filSysType, "FAT16   ", 8);
+		memcpy(vbr->fat16.filSysType, "FAT16   ", 8); // Bug: What about FAT12?
 		memset(vbr->fat16.bootCode, 0xF4, sizeof(vbr->fat16.bootCode));
 
 		// Reserve first 2 FAT entries of both FATs.
@@ -394,7 +393,7 @@ static void makeFsFat(const FormatParams *const params, Vbr *const vbr, const ch
 		vbr->fat32.fatSz32      = secPerFat;
 		vbr->fat32.extFlags     = 0; // TODO: Allow disabling mirroring?
 		vbr->fat32.fsVer        = 0; // 0.0.
-		vbr->fat32.rootClus     = 2; // Or the first cluster not marked as defective.
+		vbr->fat32.rootClus     = 2; // 2 or the first cluster not marked as defective.
 		vbr->fat32.fsInfoSector = 1;
 		vbr->fat32.bkBootSec    = 6;
 		vbr->fat32.drvNum       = 0x80;
@@ -446,7 +445,7 @@ static void makeFsFat(const FormatParams *const params, Vbr *const vbr, const ch
 	// TODO
 }*/
 
-u32 formatSd(const char *const path, const char *const label, const u32 flags, const u64 overrTotSec)
+u32 formatSd(const char *const path, const char *const label, const ArgFlags flags, const u64 overrTotSec)
 {
 	BlockDev dev;
 	if(dev.open(path, true) != 0) return 2;
@@ -464,12 +463,12 @@ u32 formatSd(const char *const path, const char *const label, const u32 flags, c
 	}
 	verbosePrintf("SD card contains %" PRIu64 " sectors.\n", totSec);
 
-	if((flags & (FLAGS_ERASE | FLAGS_SECURE_ERASE)) != 0)
+	if(flags.erase || flags.secErase)
 	{
 		verbosePuts("Erasing SD card...");
 
 		// TODO: Apparently not all cards support secure erase.
-		const int discardRes = dev.discardAll((flags & FLAGS_SECURE_ERASE) != 0);
+		const int discardRes = dev.discardAll(flags.secErase);
 		if(discardRes == EOPNOTSUPP)
 		{
 			fputs("SD card can't be erased. Ignoring.\n", stderr);
@@ -477,12 +476,13 @@ u32 formatSd(const char *const path, const char *const label, const u32 flags, c
 		else if(discardRes != 0) return 3;
 	}
 
-	FormatParams params = {};
-	getFormatParams(totSec, (flags & FLAGS_FORCE_FAT32) != 0, &params);
+	FormatParams params{};
+	getFormatParams(totSec, flags.forceFat32, &params);
 
 	// For FAT32 we also need to clear the root directory cluster.
-	const size_t bufSize = 512 * (params.partStart + params.fsAreaSize + (params.fatBits == 32 ? params.secPerClus : 0));
-	const std::unique_ptr<u8[]> buf(new(std::nothrow) u8[bufSize]);
+	const u32 partStart = params.partStart;
+	const size_t bufSize = 512 * (partStart + params.fsAreaSize + (params.fatBits == 32 ? params.secPerClus : 0));
+	const std::unique_ptr<u8[]> buf(new(std::nothrow) u8[bufSize]{});
 	if(!buf)
 	{
 		fputs("Not enough memory.", stderr);
@@ -498,7 +498,6 @@ u32 formatSd(const char *const path, const char *const label, const u32 flags, c
 	// TODO: Label should be upper case and some chars are not allowed. Implement conversion + checks.
 	//       mkfs.fat allows lower case but warns about it.
 	verbosePuts("Formatting the partition...");
-	const u32 partStart = params.partStart;
 	makeFsFat(&params, (Vbr*)(buf.get() + (512 * partStart)), label);
 
 	if(dev.write(buf.get(), 0, bufSize / 512) != 0)

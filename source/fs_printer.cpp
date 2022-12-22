@@ -1,5 +1,6 @@
 #include <cstdio>
-#include "fs_structs.h"
+#include "exfat.h"
+#include "fat.h"
 
 
 

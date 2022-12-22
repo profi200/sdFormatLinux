@@ -1,13 +1,10 @@
 #pragma once
 
-#include <assert.h>
-#include <stdalign.h>
-#include <stddef.h>
+#include <cstddef>
 #include "types.h"
 
 // References:
 // FAT12/16/32: http://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc
-// exFAT: https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification
 
 
 typedef struct
@@ -20,8 +17,8 @@ typedef struct
 	u16 endSC;
 	u32 startLba;
 	u32 sectorsLba;
-} PartInfo;
-static_assert(offsetof(PartInfo, sectorsLba) == 12, "Error.");
+} __attribute__((packed)) PartInfo;
+static_assert(offsetof(PartInfo, sectorsLba) == 12, "Member sectorsLba of PartInfonfo not at offsetof 12.");
 
 typedef struct
 {
@@ -31,7 +28,7 @@ typedef struct
 	PartInfo partTable[4];
 	u16 magic;
 } __attribute__((packed)) Mbr;
-static_assert(offsetof(Mbr, magic) == 510, "Error.");
+static_assert(offsetof(Mbr, magic) == 510, "Member magic of Mbr not at offsetof 510.");
 
 // Volume Boot Record.
 typedef struct
@@ -86,9 +83,9 @@ typedef struct
 	};
 	u16 sigWord; // 0xAA55.
 } __attribute__((packed)) Vbr;
-static_assert(offsetof(Vbr, fat16.bootCode) == 62, "Error.");
-static_assert(offsetof(Vbr, fat32.bootCode) == 90, "Error.");
-static_assert(offsetof(Vbr, sigWord) == 510, "Error.");
+static_assert(offsetof(Vbr, fat16.bootCode) == 62, "Member fat16.bootCode of Vbr not at offsetof 62.");
+static_assert(offsetof(Vbr, fat32.bootCode) == 90, "Member fat32.bootCode of Vbr not at offsetof 90.");
+static_assert(offsetof(Vbr, sigWord) == 510, "Member sigWord of Vbr not at offsetof 510.");
 
 typedef struct
 {
@@ -100,7 +97,7 @@ typedef struct
 	u8 reserved2[12];  // Must be 0.
 	u32 trailSig;      // Must be 0xAA550000.
 } FsInfo;
-static_assert(offsetof(FsInfo, trailSig) == 508, "Error.");
+static_assert(offsetof(FsInfo, trailSig) == 508, "Member trailSig of FsInfo not at offsetof 508.");
 
 typedef struct
 {
@@ -117,6 +114,4 @@ typedef struct
 	u16 fstClusLo;   // Low u16 of first data cluster.
 	u32 fileSize;    // File/directory size in bytes.
 } FatDir;
-static_assert(offsetof(FatDir, fileSize) == 28, "Error.");
-
-// TODO: exFAT.
+static_assert(offsetof(FatDir, fileSize) == 28, "Member fileSize of FatDir not at offsetof 28.");

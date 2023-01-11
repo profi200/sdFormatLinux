@@ -17,7 +17,22 @@ union ArgFlags
 	u8 allFlags;
 };
 
+typedef struct
+{
+	// TODO: union with exFAT vars.
+	u64 totSec;
+	u8  heads;
+	u8  secPerTrk;
+	u8  fatBits;
+	u32 alignment;
+	u32 secPerClus;
+	u32 rsvdSecCnt;
+	u32 secPerFat;
+	u32 fsAreaSize;
+	u32 partStart;
+	u32 maxClus;
+} FormatParams;
 
 
-void setVerboseMode(const bool verbose);
+
 u32 formatSd(const char *const path, const char *const label, const ArgFlags flags, const u64 overrTotSec);

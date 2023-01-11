@@ -1,4 +1,5 @@
 #include <cstdio>
+#include "mbr.h"
 #include "exfat.h"
 #include "fat.h"
 
@@ -22,6 +23,7 @@
 	}
 }*/
 
+// TODO: Rewrite to use less args for printf().
 static void printVbr(const Vbr *vbr, const u32 partStartLba)
 {
 	printf("Volume Boot Record:\n"
@@ -126,11 +128,12 @@ static void printVbr(const Vbr *vbr, const u32 partStartLba)
 	       dataStart, partStartLba + dataStart);
 }
 
+// TODO: Rewrite to use less args for printf().
 int printDiskInfo(const char *const path)
 {
 	int res = 0;
 	FILE *const f = fopen(path, "rb"); // TODO: Use open()/read()/close()?
-	Mbr mbr = {};
+	Mbr mbr{};
 	if(f != NULL)
 	{
 		if(fread(&mbr, sizeof(Mbr), 1, f) != 1)
@@ -148,50 +151,50 @@ int printDiskInfo(const char *const path)
 
 	puts("Master Boot Record:");
 	//hexdump(mbr.code, sizeof(mbr.code)); // TODO: Separate option to print this?
-	printf("\tDisk ID:  0x%08" PRIX32 "\n"
-	       "\tReserved: 0x%04" PRIX16 "\n"
-	       "\tMagic:    0x%04" PRIX16 "\n\n",
-	       mbr.diskId,
+	printf("\tDisk signature:  0x%08" PRIX32 "\n"
+	       "\tReserved:        0x%04" PRIX16 "\n"
+	       "\tBoot signature:  0x%04" PRIX16 "\n\n",
+	       mbr.diskSig,
 	       mbr.reserved,
-	       mbr.magic);
+	       mbr.bootSig);
 
 	for(u32 i = 0; i < 4; i++)
 	{
-		const PartInfo *info = &mbr.partTable[i];
-		if(info->startLba == 0 || info->sectorsLba == 0) continue;
+		const PartEntry &entry = mbr.partTable[i];
+		if(entry.startLBA == 0 || entry.sectors == 0) continue;
 
 		printf("Partition %" PRIu32 " info:\n"
-		       "\tbootable:              0x%02" PRIX8 "\n"
+		       "\tStatus:                0x%02" PRIX8 "\n"
 		       "\tStart head:            %" PRIu8 "\n"
 		       "\tStart sector:          %" PRIu16 "\n"
 		       "\tStart cylinder:        %" PRIu16 "\n"
-		       "\tSystem ID:             0x%02" PRIX8 "\n"
+		       "\tType:                  0x%02" PRIX8 "\n"
 		       "\tEnd head:              %" PRIu8 "\n"
 		       "\tEnd sector:            %" PRIu16 "\n"
 		       "\tEnd cylinder:          %" PRIu16 "\n"
 		       "\tStart LBA:             %" PRIu32 "\n"
-		       "\tSectors LBA:           %" PRIu32 "\n\n",
+		       "\tSectors:               %" PRIu32 "\n\n",
 		       i + 1,
-		       info->bootable,
-		       info->startH,
-		       info->startSC & 0x3F,
-		       (info->startSC & 0xC0)<<2 | info->startSC>>8,
-		       info->id,
-		       info->endH,
-		       info->endSC & 0x3F,
-		       (info->endSC & 0xC0)<<2 | info->endSC>>8,
-		       info->startLba,
-		       info->sectorsLba);
+		       entry.status,
+		       entry.startCHS[0],
+		       entry.startCHS[1] & 0x3F,
+		       (u16)(entry.startCHS[1] & 0xC0)<<2 | entry.startCHS[2],
+		       entry.type,
+		       entry.endCHS[0],
+		       entry.endCHS[1] & 0x3F,
+		       (u16)(entry.endCHS[1] & 0xC0)<<2 | entry.endCHS[2],
+		       entry.startLBA,
+		       entry.sectors);
 
-		if(fseek(f, 512 * info->startLba, SEEK_SET) == 0)
+		if(fseek(f, 512 * entry.startLBA, SEEK_SET) == 0)
 		{
-			Vbr br = {};
+			Vbr br{};
 			if(fread(&br, sizeof(Vbr), 1, f) != 1)
 			{
 				res = 3;
 				break;
 			}
-			printVbr(&br, info->startLba);
+			printVbr(&br, entry.startLBA);
 		}
 		else
 		{

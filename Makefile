@@ -18,7 +18,7 @@ CXXFLAGS := $(ARCH) -std=c++20 -O2 -g -fstrict-aliasing \
 			-Wstrict-aliasing=2
 ASFLAGS  := $(ARCH) -O2 -g -x assembler-with-cpp
 ARFLAGS  := -rcs
-LDFLAGS  := $(ARCH) -O2 -g -Wl,--gc-sections
+LDFLAGS  := $(ARCH) -O2 -s -Wl,--gc-sections
 
 PREFIX   :=
 CC       := $(PREFIX)gcc

@@ -41,3 +41,7 @@ static_assert(offsetof(BootSector, bootSignature) == 510, "Member bootSignature 
 	u8 extendedBootCode[(1u<<bytesPerSectorShift) - 4];
 	u32 extendedBootSignature;                          // 0xAA550000.
 } ExtendedBootSector;*/
+
+
+
+void calcFormatExFat(void); // (const u64 totSec, FormatParams *const paramsOut)

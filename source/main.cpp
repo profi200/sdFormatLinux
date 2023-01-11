@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include "fs_printer.h"
 #include "format.h"
+#include "verbose_printf.h"
 
 
 
@@ -13,14 +14,15 @@ static void printHelp(void)
 	puts("sdFormatLinux 0.0 by profi200\n"
 	     "Usage: sdFormatLinux [OPTIONS...] DEVICE\n\n"
 	     "Options:\n"
-	     "  -c, --capacity SECTORS   Override capacity for fake cards or image files.\n"
+	     "  -c, --capacity SECTORS   Override capacity for fake cards.\n"
 	     //"  -d, --dry-run            Only pretend to format the card (non-destructive).\n"
 	     "  -e, --erase TYPE         Erases the whole card before formatting (aka TRIM).\n"
 	     "                           No effect with USB card readers.\n"
 	     "                           TYPE can be 'trim' or 'secure'.\n"
+	     "                           'secure' is currently not supported by Linux.\n"
 	     "  -f, --force-fat32        Force format SDXC cards as FAT32.\n"
 	     "                           No effect on other types of SD cards.\n"
-	     "  -l, --label LABEL        Volume label. Maximum 11 upper case characters.\n"
+	     "  -l, --label LABEL        Volume label. Maximum 11 uppercase characters.\n"
 	     "  -p, --print-fs           Don't format. Print the filesystem structure.\n"
 	     "  -v, --verbose            Show format details.\n"
 	     "  -h, --help               Output this help.\n");
@@ -30,7 +32,7 @@ int main(const int argc, char *const argv[])
 {
 	static const struct option long_options[] =
 	{{   "capacity", required_argument, NULL, 'c'},
-	 {    "dry-run",       no_argument, NULL, 'd'},
+	// {    "dry-run",       no_argument, NULL, 'd'},
 	 {      "erase", required_argument, NULL, 'e'},
 	 {"force-fat32",       no_argument, NULL, 'f'},
 	 {      "label", required_argument, NULL, 'l'},
@@ -59,9 +61,9 @@ int main(const int argc, char *const argv[])
 					}
 				}
 				break;
-			case 'd':
+			/*case 'd':
 				flags.dryRun = 1;
-				break;
+				break;*/
 			case 'e':
 				{
 					if(strcmp(optarg, "trim") == 0)
@@ -101,6 +103,7 @@ int main(const int argc, char *const argv[])
 						}
 						// TODO: The label should be encoded in the system's DOS code page. Convert from UTF-8 to DOS code page.
 						// TODO: Check for uppercase chars and give a warning.
+						// TODO: Do not allow the "NO NAME" label?
 					}*/
 				}
 				break;
@@ -141,13 +144,13 @@ int main(const int argc, char *const argv[])
 	}
 	catch(const std::exception& e)
 	{
-		fprintf(stderr, "An exception occured: what(): '%s'\n", e.what());
-		res = 5;
+		fprintf(stderr, "An exception occurred: what(): '%s'\n", e.what());
+		res = 8;
 	}
 	catch(...)
 	{
-		fprintf(stderr, "Unknown exception. Exiting...\n");
-		res = 6;
+		fprintf(stderr, "Unknown exception. Aborting...\n");
+		res = 9;
 	}
 
 	return res;

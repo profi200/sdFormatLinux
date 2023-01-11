@@ -6,10 +6,10 @@
 
 class BlockDev
 {
-	bool m_isRegularFile;
-	bool m_isDevDirty;
+	static constexpr u32 m_sectorSize = 512;
+	bool m_dirty;
 	int m_fd;
-	u64 m_diskSectors; // TODO: Store sector size along with this. ioctl(..., BLKSSZGET, ...). Or maybe BLKPBSZGET like dosfstools?
+	u64 m_sectors;
 
 
 	BlockDev(const BlockDev&) noexcept = delete; // Copy
@@ -20,7 +20,7 @@ class BlockDev
 
 
 public:
-	BlockDev(void) noexcept : m_isRegularFile(false), m_isDevDirty(false), m_fd(-1), m_diskSectors(0) {}
+	BlockDev(void) noexcept : m_dirty(false), m_fd(-1), m_sectors(0) {}
 	~BlockDev(void) noexcept
 	{
 		if(m_fd != -1) close();
@@ -37,11 +37,18 @@ public:
 	int open(const char *const path, const bool rw = false) noexcept;
 
 	/**
+	 * @brief      Returns the sector size in bytes.
+	 *
+	 * @return     The sector size.
+	 */
+	static constexpr u32 getSectorSize(void) {return m_sectorSize;}
+
+	/**
 	 * @brief      Returns the number of sectors.
 	 *
 	 * @return     The number of sectors.
 	 */
-	u64 getSectors(void) const noexcept {return m_diskSectors;}
+	u64 getSectors(void) const noexcept {return m_sectors;}
 
 	/**
 	 * @brief      Reads sectors from the block device.
@@ -66,18 +73,9 @@ public:
 	int write(const u8 *buf, const u64 sector, const u64 count) noexcept;
 
 	/**
-	 * @brief      Truncates to the specified size if the device is a regular file. Otherwise not supported.
+	 * @brief      Perform a TRIM/erase on the whole block device.
 	 *
-	 * @param[in]  sectors  The size in sectors.
-	 *
-	 * @return     Returns 0 on success or errno.
-	 */
-	int truncate(const u64 sectors) noexcept;
-
-	/**
-	 * @brief      Perform a TRIM/erase on the whole block device. Not supported for regular files.
-	 *
-	 * @param[in]  secure  If true do a secure erase.
+	 * @param[in]  secure  If true do a secure erase. Currently unsupported by Linux.
 	 *
 	 * @return     Returns 0 on success or errno.
 	 */

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include "types.h"
 #include "exfat.h"
 
@@ -15,3 +16,15 @@ u32 calcExFatBootChecksum(const u8 *data, const u16 bytesPerSector)
 
 	return checksum;
 }
+
+void calcFormatExFat(void) // (const u64 totSec, FormatParams *const paramsOut)
+{
+	// TODO
+	fputs("exFAT is not supported yet.\n", stderr);
+}
+
+/*static void makeFsExFat(const FormatParams &params, BufferedFsWriter &dev, const char *const label)
+{
+	// Volume Boot Record (VBR).
+	// TODO
+}*/

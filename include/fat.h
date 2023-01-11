@@ -2,33 +2,12 @@
 
 #include <cstddef>
 #include "types.h"
+#include "format.h"
+#include "buffered_fs_writer.h"
 
 // References:
 // FAT12/16/32: http://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc
 
-
-typedef struct
-{
-	u8 bootable;
-	u8 startH;
-	u16 startSC;
-	u8 id;
-	u8 endH;
-	u16 endSC;
-	u32 startLba;
-	u32 sectorsLba;
-} __attribute__((packed)) PartInfo;
-static_assert(offsetof(PartInfo, sectorsLba) == 12, "Member sectorsLba of PartInfonfo not at offsetof 12.");
-
-typedef struct
-{
-	u8 code[440];
-	u32 diskId;
-	u16 reserved;
-	PartInfo partTable[4];
-	u16 magic;
-} __attribute__((packed)) Mbr;
-static_assert(offsetof(Mbr, magic) == 510, "Member magic of Mbr not at offsetof 510.");
 
 // Volume Boot Record.
 typedef struct
@@ -81,6 +60,7 @@ typedef struct
 			u8 bootCode[420];
 		} fat32;
 	};
+
 	u16 sigWord; // 0xAA55.
 } __attribute__((packed)) Vbr;
 static_assert(offsetof(Vbr, fat16.bootCode) == 62, "Member fat16.bootCode of Vbr not at offsetof 62.");
@@ -104,9 +84,9 @@ typedef struct
 	char name[11];   // Short file name in 8:3 format. Maximum 11 characters.
 	u8 attr;         // Attribute bitmask. ATTR_READ_ONLY 0x01, ATTR_HIDDEN 0x02, ATTR_SYSTEM 0x04, ATTR_VOLUME_ID 0x08, ATTR_DIRECTORY 0x10, ATTR_ARCHIVE 0x20.
 	u8 ntRes;        // Must be 0.
-	u8 ctrTimeTenth; // Creation time tenths of a second.
-	u16 ctrTime;     // Creation time in 2 second units.
-	u16 ctrDate;     // Creation date.
+	u8 crtTimeTenth; // Creation time tenths of a second.
+	u16 crtTime;     // Creation time in 2 second units.
+	u16 crtDate;     // Creation date.
 	u16 lstAccDate;  // Last access date. Updated on write.
 	u16 fstClusHi;   // High u16 of first data cluster. Must be 0 for FAT12/16.
 	u16 wrtTime;     // Last (modification) write time.
@@ -115,3 +95,9 @@ typedef struct
 	u32 fileSize;    // File/directory size in bytes.
 } FatDir;
 static_assert(offsetof(FatDir, fileSize) == 28, "Member fileSize of FatDir not at offsetof 28.");
+
+
+
+void calcFormatFat(const u32 totSec, FormatParams &params);
+void calcFormatFat32(const u32 totSec, FormatParams &params);
+int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::string &label);

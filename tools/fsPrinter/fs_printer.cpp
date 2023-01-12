@@ -1,7 +1,7 @@
 #include <cstdio>
-#include "mbr.h"
-#include "exfat.h"
-#include "fat.h"
+#include "../../include/mbr.h"
+#include "../../include/exfat.h"
+#include "../../include/fat.h"
 
 
 
@@ -139,13 +139,13 @@ int printDiskInfo(const char *const path)
 		if(fread(&mbr, sizeof(Mbr), 1, f) != 1)
 		{
 			res = 3;
-			fputs("Failed to read file.", stderr);
+			fputs("Failed to read file.\n", stderr);
 		}
 	}
 	else
 	{
 		res = 2;
-		fputs("Failed to open file.", stderr);
+		fputs("Failed to open file.\n", stderr);
 	}
 	if(res != 0) return res;
 
@@ -204,6 +204,33 @@ int printDiskInfo(const char *const path)
 	}
 
 	fclose(f);
+
+	return res;
+}
+
+int main(const int argc, char *const argv[])
+{
+	if(argc != 2)
+	{
+		puts("Usage: fsPrinter DEVICE");
+		return 1;
+	}
+
+	int res;
+	try
+	{
+		res = printDiskInfo(argv[1]);
+	}
+	catch(const std::exception &e)
+	{
+		fprintf(stderr, "An exception occurred: what(): '%s'\n", e.what());
+		res = 2;
+	}
+	catch(...)
+	{
+		fprintf(stderr, "Unknown exception. Aborting...\n");
+		res = 3;
+	}
 
 	return res;
 }

@@ -119,7 +119,7 @@ int BlockDev::open(const char *const path, const bool rw) noexcept
 #endif
 
 		m_fd = fd;
-		m_sectors = diskSize / 512;
+		m_sectors = diskSize / m_sectorSize;
 	} while(0);
 
 	if(res != 0)
@@ -134,8 +134,8 @@ int BlockDev::read(u8 *buf, const u64 sector, const u64 count) const noexcept
 {
 	int res = 0;
 	const int fd = m_fd;
-	off_t offset = sector * 512;
-	u64 totSize = count * 512;
+	off_t offset = sector * m_sectorSize;
+	u64 totSize = count * m_sectorSize;
 	while(totSize > 0)
 	{
 		// Limit of 1 GiB chunks.
@@ -168,8 +168,8 @@ int BlockDev::write(const u8 *buf, const u64 sector, const u64 count) noexcept
 
 	int res = 0;
 	const int fd = m_fd;
-	off_t offset = sector * 512;
-	u64 totSize = count * 512;
+	off_t offset = sector * m_sectorSize;
+	u64 totSize = count * m_sectorSize;
 	while(totSize > 0)
 	{
 		// Limit of 1 GiB chunks.
@@ -195,7 +195,7 @@ int BlockDev::write(const u8 *buf, const u64 sector, const u64 count) noexcept
 int BlockDev::discardAll(const bool secure) const noexcept
 {
 	int res = 0;
-	const u64 wholeRange[2] = {0, m_sectors * 512};
+	const u64 wholeRange[2] = {0, m_sectors * m_sectorSize};
 	if(ioctl(m_fd, (secure ? BLKSECDISCARD : BLKDISCARD), wholeRange) == -1)
 	{
 		res = errno;

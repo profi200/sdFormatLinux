@@ -3,7 +3,7 @@
 #include <cstring>
 #include <exception>
 #include <getopt.h>
-#include "fs_printer.h"
+#include "errors.h"
 #include "format.h"
 #include "verbose_printf.h"
 
@@ -23,7 +23,6 @@ static void printHelp(void)
 	     "  -f, --force-fat32        Force format SDXC cards as FAT32.\n"
 	     "                           No effect on other types of SD cards.\n"
 	     "  -l, --label LABEL        Volume label. Maximum 11 uppercase characters.\n"
-	     "  -p, --print-fs           Don't format. Print the filesystem structure.\n"
 	     "  -v, --verbose            Show format details.\n"
 	     "  -h, --help               Output this help.\n");
 }
@@ -36,7 +35,6 @@ int main(const int argc, char *const argv[])
 	 {      "erase", required_argument, NULL, 'e'},
 	 {"force-fat32",       no_argument, NULL, 'f'},
 	 {      "label", required_argument, NULL, 'l'},
-	 {   "print-fs",       no_argument, NULL, 'p'},
 	 {    "verbose",       no_argument, NULL, 'v'},
 	 {       "help",       no_argument, NULL, 'h'},
 	 {         NULL,                 0, NULL,   0}};
@@ -46,7 +44,7 @@ int main(const int argc, char *const argv[])
 	char label[12]{};
 	while(1)
 	{
-		const int c = getopt_long(argc, argv, "c:de:fl:pvh", long_options, NULL);
+		const int c = getopt_long(argc, argv, "c:" /*d*/ "e:fl:vh", long_options, NULL);
 		if(c == -1) break;
 
 		switch(c)
@@ -57,7 +55,7 @@ int main(const int argc, char *const argv[])
 					if(overrTotSec == 0 || overrTotSec > 1ull<<32) // Max 2 TiB.
 					{
 						fputs("Error: Image size 0 or out of range.\n", stderr);
-						return 1;
+						return ERR_INVALID_ARG;
 					}
 				}
 				break;
@@ -66,6 +64,7 @@ int main(const int argc, char *const argv[])
 				break;*/
 			case 'e':
 				{
+					// TODO: Support full overwrite?
 					if(strcmp(optarg, "trim") == 0)
 						flags.erase = 1;
 					else if(strcmp(optarg, "secure") == 0)
@@ -73,7 +72,7 @@ int main(const int argc, char *const argv[])
 					else
 					{
 						fprintf(stderr, "Error: Invalid erase type '%s'.\n", optarg);
-						return 1;
+						return ERR_INVALID_ARG;
 					}
 				}
 				break;
@@ -85,7 +84,7 @@ int main(const int argc, char *const argv[])
 					if(strlen(optarg) > 11)
 					{
 						fputs("Error: Label is longer than 11 characters.\n", stderr);
-						return 1;
+						return ERR_INVALID_ARG;
 					}
 					strncpy(label, optarg, 11);
 					/*for(u32 i = 0; i < 11; i++)
@@ -99,16 +98,13 @@ int main(const int argc, char *const argv[])
 						   lc == 0x7C)
 						{
 							fputs("Error: Label contains invalid characters.\n", stderr);
-							return 1;
+							return ERR_INVALID_ARG;
 						}
 						// TODO: The label should be encoded in the system's DOS code page. Convert from UTF-8 to DOS code page.
 						// TODO: Check for uppercase chars and give a warning.
 						// TODO: Do not allow the "NO NAME" label?
 					}*/
 				}
-				break;
-			case 'p':
-				flags.printFs = 1;
 				break;
 			case 'v':
 				flags.verbose = 1;
@@ -121,36 +117,32 @@ int main(const int argc, char *const argv[])
 				// Fallthrough.
 			default:
 				printHelp();
-				return 1;
+				return ERR_INVALID_ARG;
 		}
 	}
 
 	if(argc - optind < 1 || argc - optind > 1)
 	{
 		printHelp();
-		return 1;
+		return ERR_INVALID_ARG;
 	}
 
 	const char *const devPath = argv[optind];
 	int res;
 	try
 	{
-		if(!flags.printFs)
-		{
-			setVerboseMode(flags.verbose);
-			res = formatSd(devPath, (*label != 0 ? label : NULL), flags, overrTotSec);
-		}
-		else res = printDiskInfo(devPath);
+		setVerboseMode(flags.verbose);
+		res = formatSd(devPath, (*label != 0 ? label : NULL), flags, overrTotSec);
 	}
-	catch(const std::exception& e)
+	catch(const std::exception &e)
 	{
 		fprintf(stderr, "An exception occurred: what(): '%s'\n", e.what());
-		res = 8;
+		res = ERR_EXCEPTION;
 	}
 	catch(...)
 	{
 		fprintf(stderr, "Unknown exception. Aborting...\n");
-		res = 9;
+		res = ERR_UNK_EXCEPTION;
 	}
 
 	return res;

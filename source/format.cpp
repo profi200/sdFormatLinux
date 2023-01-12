@@ -6,6 +6,7 @@
 #include "mbr.h"
 #include "exfat.h"
 #include "fat.h"
+#include "errors.h"
 #include "buffered_fs_writer.h"
 #include "verbose_printf.h"
 #include "privileges.h"
@@ -13,7 +14,7 @@
 
 
 // TODO: fatBits is determined from SC and TS.
-static bool getFormatParams(const u64 totSec, const bool forceSdxcFat32, FormatParams *const paramsOut)
+static bool getFormatParams(const u64 totSec, const bool forceSdxcFat32, FormatParams &paramsOut)
 {
 	if(totSec == 0) return false;
 	if(totSec >= 1ull<<32 && forceSdxcFat32) return false;
@@ -59,12 +60,12 @@ static bool getFormatParams(const u64 totSec, const bool forceSdxcFat32, FormatP
 		{ 0,  0,    0,      0}  // Higher is not supported (yet).
 	};
 
-	paramsOut->totSec = totSec;
+	paramsOut.totSec = totSec;
 
 	const GeometryData *geometryData = geometryTable;
 	while(geometryData->cap != 0 && totSec>>11 > geometryData->cap) geometryData++;
-	paramsOut->heads     = geometryData->heads;
-	paramsOut->secPerTrk = geometryData->secPerTrk;
+	paramsOut.heads     = geometryData->heads;
+	paramsOut.secPerTrk = geometryData->secPerTrk;
 
 	const AlignData *alignParams = alignTable;
 	while(alignParams->capLog2 != 0 && totSec > 1ull<<alignParams->capLog2) alignParams++;
@@ -75,41 +76,41 @@ static bool getFormatParams(const u64 totSec, const bool forceSdxcFat32, FormatP
 	}
 
 	const u8 fatBits = (alignParams->capLog2 > 26 && forceSdxcFat32 ? 32 : alignParams->fatBits);
-	paramsOut->fatBits    = fatBits;
-	paramsOut->alignment  = alignParams->alignment;
-	paramsOut->secPerClus = alignParams->secPerClus;
+	paramsOut.fatBits    = fatBits;
+	paramsOut.alignment  = alignParams->alignment;
+	paramsOut.secPerClus = alignParams->secPerClus;
 
-	if(fatBits <= 16)      calcFormatFat((u32)totSec, *paramsOut);
-	else if(fatBits == 32) calcFormatFat32((u32)totSec, *paramsOut);
+	if(fatBits <= 16)      calcFormatFat((u32)totSec, paramsOut);
+	else if(fatBits == 32) calcFormatFat32((u32)totSec, paramsOut);
 	else                   calcFormatExFat(/*totSec, *paramsOut*/); // TODO
 
 	return true;
 }
 
-static void printFormatParams(const FormatParams *const params)
+static void printFormatParams(const FormatParams &params)
 {
 	const char *fsName;
-	if(params->fatBits == 12)      fsName = "FAT12";
-	else if(params->fatBits == 16) fsName = "FAT16";
-	else if(params->fatBits == 32) fsName = "FAT32";
-	else                           fsName = "exFAT";
+	if(params.fatBits == 12)      fsName = "FAT12";
+	else if(params.fatBits == 16) fsName = "FAT16";
+	else if(params.fatBits == 32) fsName = "FAT32";
+	else                          fsName = "exFAT";
 
 	printf("Filesystem type:      %s\n", fsName);
-	printf("Heads:                %" PRIu8 "\n", params->heads);
-	printf("Sectors per track:    %" PRIu8 "\n", params->secPerTrk);
-	printf("Alignment:            %" PRIu32 "\n", params->alignment);
-	printf("Reserved sectors:     %" PRIu32 "\n", params->rsvdSecCnt);
-	printf("Sectors per cluster:  %" PRIu32 "\n", params->secPerClus);
-	printf("Sectors per FAT:      %" PRIu32 "\n", params->secPerFat);
-	printf("Filesystem area size: %" PRIu32 "\n", params->fsAreaSize);
-	printf("Partition start:      %" PRIu32 "\n", params->partStart);
-	printf("Maximum clusters:     %" PRIu32 "\n", params->maxClus);
+	printf("Heads:                %" PRIu8 "\n", params.heads);
+	printf("Sectors per track:    %" PRIu8 "\n", params.secPerTrk);
+	printf("Alignment:            %" PRIu32 "\n", params.alignment);
+	printf("Reserved sectors:     %" PRIu32 "\n", params.rsvdSecCnt);
+	printf("Sectors per cluster:  %" PRIu32 "\n", params.secPerClus);
+	printf("Sectors per FAT:      %" PRIu32 "\n", params.secPerFat);
+	printf("Filesystem area size: %" PRIu32 "\n", params.fsAreaSize);
+	printf("Partition start:      %" PRIu32 "\n", params.partStart);
+	printf("Maximum clusters:     %" PRIu32 "\n", params.maxClus);
 }
 
 u32 formatSd(const char *const path, const char *const label, const ArgFlags flags, const u64 overrTotSec)
 {
 	BufferedFsWriter dev;
-	if(dev.open(path) != 0) return 2;
+	if(dev.open(path) != 0) return ERR_DEV_OPEN;
 	dropPrivileges();
 
 	// The smallest card we can format without running into issues is 64 KiB.
@@ -118,7 +119,7 @@ u32 formatSd(const char *const path, const char *const label, const ArgFlags fla
 	if(totSec < (1024 * 64 / 512))
 	{
 		fputs("SD card capacity too small.\n", stderr);
-		return 3;
+		return ERR_DEV_TOO_SMALL;
 	}
 
 	// Allow overriding the capacity only if the new capacity is lower.
@@ -137,28 +138,28 @@ u32 formatSd(const char *const path, const char *const label, const ArgFlags fla
 		{
 			fputs("SD card can't be erased. Ignoring.\n", stderr);
 		}
-		else if(discardRes != 0) return 4;
+		else if(discardRes != 0) return ERR_ERASE;
 	}
 
 	FormatParams params{};
-	getFormatParams(totSec, flags.forceFat32, &params);
+	getFormatParams(totSec, flags.forceFat32, params);
 
 	// Create a new Master Boot Record and partition.
 	verbosePuts("Creating new partition table and partition...");
-	if(createMbrAndPartition(&params, dev) != 0) return 5;
+	if(createMbrAndPartition(&params, dev) != 0) return ERR_PARTITION;
 
 	// Clear filesystem areas and write a new Volume Boot Record.
 	// TODO: Label should be upper case and some chars are not allowed. Implement conversion + checks.
 	//       mkfs.fat allows lower case but warns about it.
 	verbosePuts("Formatting the partition...");
 	// TODO: Depending on FS type call the format function here.
-	if(makeFsFat(params, dev, label) != 0) return 6;
+	if(makeFsFat(params, dev, label) != 0) return ERR_FORMAT;
 
 	// Explicitly close dev to get the result.
-	if(dev.close() != 0) return 7;
+	if(dev.close() != 0) return ERR_CLOSE_DEV;
 
 	puts("Successfully formatted the card.");
-	printFormatParams(&params);
+	printFormatParams(params);
 
 	return 0;
 }

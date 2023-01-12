@@ -11,7 +11,6 @@ union ArgFlags
 		u8 erase      : 1;
 		u8 secErase   : 1;
 		u8 forceFat32 : 1;
-		u8 printFs    : 1;
 		u8 verbose    : 1;
 	};
 	u8 allFlags;

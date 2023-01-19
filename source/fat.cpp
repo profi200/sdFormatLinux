@@ -8,22 +8,29 @@
 
 
 
-// FAT12/FAT16.
-void calcFormatFat(const u32 totSec, FormatParams &params)
+static inline u32 divCeil32(const u32 a, const u32 b)
 {
-	const u32 fatBits     = params.fatBits;
-	const u32 alignment   = params.alignment;
-	const u32 secPerClus  = params.secPerClus;
-	const u32 bytesPerSec = 512;
-	const u32 rootEntCnt  = 512;
-	const u32 rsvdSecCnt  = 1;
-	u32 secPerFat         = ceil((double)(totSec / secPerClus * fatBits) / (bytesPerSec * 8));
+	//return (a + b - 1) / b;    // Can overflow.
+	return 1u + ((a - 1) / b); // a must be >= 1.
+}
+
+// FAT12/FAT16.
+void calcFormatFat(FormatParams &params)
+{
+	const u32 totSec          = params.totSec & 0xFFFFFFFFu;
+	const u32 fatBits         = params.fatBits;
+	const u32 alignment       = params.alignment;
+	const u32 secPerClus      = params.secPerClus;
+	constexpr u32 bytesPerSec = 512; // Can be hardcoded (no big logical sector support for FAT12/16).
+	constexpr u32 rootEntCnt  = 512;
+	constexpr u32 rsvdSecCnt  = 1;
+	u32 secPerFat             = divCeil32(totSec / secPerClus * fatBits, bytesPerSec * 8);
 	u32 fsAreaSize;
 	u32 partStart;
 	u32 maxClus;
 	while(1)
 	{
-		fsAreaSize = rsvdSecCnt + 2 * secPerFat + ceil((double)(32 * rootEntCnt) / bytesPerSec);
+		fsAreaSize = rsvdSecCnt + 2 * secPerFat + divCeil32(32 * rootEntCnt, bytesPerSec);
 		partStart  = alignment - fsAreaSize % alignment;
 		if(partStart != alignment) partStart += alignment;
 
@@ -31,7 +38,7 @@ void calcFormatFat(const u32 totSec, FormatParams &params)
 		while(1)
 		{
 			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
-			tmpSecPerFat = ceil((double)((2 + maxClus) * fatBits) / (bytesPerSec * 8));
+			tmpSecPerFat = divCeil32((2 + maxClus) * fatBits, bytesPerSec * 8);
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -50,24 +57,15 @@ void calcFormatFat(const u32 totSec, FormatParams &params)
 	params.maxClus    = maxClus;
 }
 
-// TODO: Using u32 for totSec limits us to <2 TiB maximum capacity.
-void calcFormatFat32(const u32 totSec, FormatParams &params)
+void calcFormatFat32(FormatParams &params)
 {
-	const u32 fatBits     = 32;
-	const u32 bytesPerSec = 512;
+	const u32 totSec      = params.totSec & 0xFFFFFFFFu;
+	constexpr u32 fatBits = 32;
+	const u32 bytesPerSec = params.bytesPerSec;
 	const u32 alignment   = params.alignment;
-	u32 secPerClus        = params.secPerClus;
-
-	if(secPerClus > 128)
-	{
-		fputs("Warning: FAT32 doesn't support more than 64 KiB per cluster."
-		      " Using 64 which might lower performance and lifetime.\n", stderr);
-		params.secPerClus = 128;
-		secPerClus         = 128;
-	}
-
-	u32 secPerFat       = ceil((double)(totSec / secPerClus * fatBits) / (bytesPerSec * 8));
-	const u32 partStart = alignment;
+	const u32 secPerClus  = params.secPerClus;
+	u32 secPerFat         = divCeil32(totSec / secPerClus * fatBits, bytesPerSec * 8);
+	const u32 partStart   = alignment;
 	u32 rsvdSecCnt;
 	u32 fsAreaSize;
 	u32 maxClus;
@@ -80,7 +78,7 @@ void calcFormatFat32(const u32 totSec, FormatParams &params)
 		while(1)
 		{
 			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
-			tmpSecPerFat = ceil((double)((2 + maxClus) * fatBits) / (bytesPerSec * 8));
+			tmpSecPerFat = divCeil32((2 + maxClus) * fatBits, bytesPerSec * 8);
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -118,18 +116,12 @@ static u32 makeVolId(void)
 	return volId;
 }
 
-struct FsSectors
-{
-	Vbr vbr;
-	FsInfo fsInfo;
-};
-static_assert(sizeof(FsSectors) == 1024, "FsSectors must have a size of 1024 bytes.");
-
 int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::string &label)
 {
 	// Seek ahead to partition start and fill everything inbetween with zeros.
 	const u32 partStart = params.partStart;
-	u64 curOffset = partStart * 512;
+	const u32 bytesPerSec = params.bytesPerSec;
+	u64 curOffset = partStart * bytesPerSec;
 	int res = dev.fill(curOffset);
 	if(res != 0) return res;
 
@@ -143,33 +135,31 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		memcpy(labelBuf, label.c_str(), labelLen);
 	}
 
-	FsSectors fsSectors{};
-
 	// Volume Boot Record (VBR).
-	Vbr &vbr = fsSectors.vbr;
+	Vbr vbr{};
 	vbr.jmpBoot[0] = 0xEB;
 	vbr.jmpBoot[1] = 0x00;
 	vbr.jmpBoot[2] = 0x90;
 	memcpy(vbr.oemName, "MSWIN4.1", 8); // SDFormatter hardcodes this.
 
 	// BIOS Parameter Block (BPB).
-	const u32 secPerClus = params.secPerClus;
-	const u32 rsvdSecCnt = params.rsvdSecCnt;
-	const u8  fatBits    = params.fatBits;
-	const u32 partSize   = static_cast<u32>(params.totSec - partStart);
-	const u32 secPerFat  = params.secPerFat;
-	vbr.bytesPerSec = 512;
+	const u32 secPerClus  = params.secPerClus;
+	const u32 rsvdSecCnt  = params.rsvdSecCnt;
+	const u8  fatBits     = params.fatBits;
+	const u32 partSectors = static_cast<u32>(params.totSec - partStart);
+	const u32 secPerFat   = params.secPerFat;
+	vbr.bytesPerSec = bytesPerSec;
 	vbr.secPerClus  = secPerClus;
 	vbr.rsvdSecCnt  = rsvdSecCnt;
 	vbr.numFats     = 2;
 	vbr.rootEntCnt  = (fatBits == 32 ? 0 : 512);
-	vbr.totSec16    = (partSize > 0xFFFF || fatBits == 32 ? 0 : partSize);   // Not used for FAT32.
+	vbr.totSec16    = (partSectors > 0xFFFF || fatBits == 32 ? 0 : partSectors); // Not used for FAT32.
 	vbr.media       = 0xF8;
-	vbr.fatSz16     = (secPerFat > 0xFFFF || fatBits == 32 ? 0 : secPerFat); // Not used for FAT32.
+	vbr.fatSz16     = (secPerFat > 0xFFFF || fatBits == 32 ? 0 : secPerFat);     // Not used for FAT32.
 	vbr.secPerTrk   = params.secPerTrk;
 	vbr.numHeads    = params.heads;
 	vbr.hiddSec     = partStart;
-	vbr.totSec32    = (partSize > 0xFFFF || fatBits == 32 ? partSize : 0);
+	vbr.totSec32    = (partSectors > 0xFFFF || fatBits == 32 ? partSectors : 0);
 	vbr.sigWord     = 0xAA55;
 
 	if(fatBits < 32)
@@ -202,44 +192,75 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		memcpy(vbr.fat32.filSysType, "FAT32   ", 8);
 		memset(vbr.fat32.bootCode, 0xF4, sizeof(vbr.fat32.bootCode));
 
-		FsInfo &fsInfo = fsSectors.fsInfo;
+		// Write Vbr.
+		res = dev.write(reinterpret_cast<u8*>(&vbr), sizeof(Vbr));
+		if(res != 0) return res;
+
+		// There are apparently drivers based on wrong documentation stating the
+		// signature word is at end of sector instead of fixed offset 510.
+		// Fill up to sector size and write the signature word to make them work.
+		u64 tmpOffset;
+		if(bytesPerSec > 512)
+		{
+			tmpOffset = curOffset + bytesPerSec - 2;
+			res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
+			if(res != 0) return res;
+		}
+
+		// Write FSInfo.
+		FsInfo fsInfo{};
 		fsInfo.leadSig   = 0x41615252;
 		fsInfo.strucSig  = 0x61417272;
 		fsInfo.freeCount = params.maxClus - 1;
 		fsInfo.nxtFree   = 3;
 		fsInfo.trailSig  = 0xAA550000;
-
-		// Write Vbr and FSInfo.
-		res = dev.write(reinterpret_cast<u8*>(&fsSectors), sizeof(FsSectors));
+		res = dev.write(reinterpret_cast<u8*>(&fsInfo), sizeof(FsInfo));
 		if(res != 0) return res;
 
-		// Write unused sector with signature word.
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), curOffset + sizeof(FsSectors) + 510, 2);
+		// TODO: FSInfo sector signature word needed?
+
+		// The FAT spec says there is actually a third boot sector with just a signature word.
+		tmpOffset = curOffset + (2 * bytesPerSec) + bytesPerSec - 2;
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
 		if(res != 0) return res;
+
+		// Write copy of Vbr.
+		tmpOffset += 2 + (3 * bytesPerSec);
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr), tmpOffset, sizeof(Vbr));
+		if(res != 0) return res;
+
+		// Write sector signature word of VBR copy.
+		if(bytesPerSec > 512)
+		{
+			tmpOffset += bytesPerSec - 2;
+			res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
+			if(res != 0) return res;
+		}
 
 		// Free cluster count is 0xFFFFFFFF (unknown) for FSInfo copy.
-		// Write copy of Vbr and FSInfo.
 		fsInfo.freeCount = 0xFFFFFFFF;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&fsSectors), curOffset + (6 * 512), sizeof(FsSectors));
+		res = dev.write(reinterpret_cast<u8*>(&fsInfo), sizeof(FsInfo));
 		if(res != 0) return res;
 
-		// Write copy of unused sector with signature word.
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), curOffset + (8 * 512) + 510, 2);
+		// TODO: FSInfo sector signature word needed?
+
+		// Write copy of third sector signature word.
+		tmpOffset = curOffset + (8 * bytesPerSec) + bytesPerSec - 2;
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
 		if(res != 0) return res;
 	}
 
 	// Prepare reserved FAT entries.
 	u32 rsvdEntrySize = 4;
+	u32 fat[3];
 	if(fatBits < 32)
 	{
 		// Reserve first 2 FAT entries.
-		u32 *const fat = reinterpret_cast<u32*>(&fsSectors);
 		*fat = (fatBits == 16 ? 0xFFFFFFF8 : 0x00FFFFF8);
 	}
 	else
 	{
 		// Reserve first 2 FAT entries. A third entry for the root directory cluster.
-		u32 *const fat = reinterpret_cast<u32*>(&fsSectors);
 		fat[0] = 0x0FFFFFF8;
 		fat[1] = 0x0FFFFFFF;
 		fat[2] = 0x0FFFFFFF;
@@ -247,29 +268,28 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 	}
 
 	// Write first FAT.
-	curOffset += rsvdSecCnt * 512;
-	res = dev.fillAndWrite(reinterpret_cast<u8*>(&fsSectors), curOffset, rsvdEntrySize);
+	curOffset += rsvdSecCnt * bytesPerSec;
+	res = dev.fillAndWrite(reinterpret_cast<u8*>(fat), curOffset, rsvdEntrySize);
 	if(res != 0) return res;
 
 	// Write second FAT.
-	curOffset += secPerFat * 512;
-	res = dev.fillAndWrite(reinterpret_cast<u8*>(&fsSectors), curOffset, rsvdEntrySize);
+	curOffset += secPerFat * bytesPerSec;
+	res = dev.fillAndWrite(reinterpret_cast<u8*>(fat), curOffset, rsvdEntrySize);
 	if(res != 0) return res;
 
 	// Create volume label entry in root directory if needed.
 	if(!label.empty())
 	{
-		FatDir *const dir = reinterpret_cast<FatDir*>(&fsSectors);
-		memset(dir, 0, sizeof(FatDir));  // Make sure all other fields are zero.
-		memcpy(dir->name, labelBuf, 11);
-		dir->attr = 0x08;                // ATTR_VOLUME_ID.
+		FatDir dir{};                   // Make sure all other fields are zero.
+		memcpy(dir.name, labelBuf, 11);
+		dir.attr = 0x08;                // ATTR_VOLUME_ID.
 
-		curOffset += secPerFat * 512;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(dir), curOffset, sizeof(FatDir));
+		curOffset += secPerFat * bytesPerSec;
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&dir), curOffset, sizeof(FatDir));
 		if(res != 0) return res;
 	}
 
 	// Fill rest of FS area and root directory cluster for FAT32.
-	curOffset = (partStart + params.fsAreaSize + (fatBits < 32 ? 0 : secPerClus)) * 512;
+	curOffset = (partStart + params.fsAreaSize + (fatBits < 32 ? 0 : secPerClus)) * bytesPerSec;
 	return dev.fill(curOffset);
 }

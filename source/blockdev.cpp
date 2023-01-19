@@ -192,7 +192,7 @@ int BlockDev::write(const u8 *buf, const u64 sector, const u64 count) noexcept
 	return 0;
 }
 
-int BlockDev::discardAll(const bool secure) const noexcept
+int BlockDev::eraseAll(const bool secure) const noexcept
 {
 	int res = 0;
 	const u64 wholeRange[2] = {0, m_sectors * m_sectorSize};

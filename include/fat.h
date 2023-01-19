@@ -98,6 +98,6 @@ static_assert(offsetof(FatDir, fileSize) == 28, "Member fileSize of FatDir not a
 
 
 
-void calcFormatFat(const u32 totSec, FormatParams &params);
-void calcFormatFat32(const u32 totSec, FormatParams &params);
+void calcFormatFat(FormatParams &params);
+void calcFormatFat32(FormatParams &params);
 int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::string &label);

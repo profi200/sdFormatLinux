@@ -14,15 +14,18 @@ static void printHelp(void)
 	puts("sdFormatLinux 0.0 by profi200\n"
 	     "Usage: sdFormatLinux [OPTIONS...] DEVICE\n\n"
 	     "Options:\n"
-	     "  -c, --capacity SECTORS   Override capacity for fake cards.\n"
-	     //"  -d, --dry-run            Only pretend to format the card (non-destructive).\n"
-	     "  -e, --erase TYPE         Erases the whole card before formatting (aka TRIM).\n"
-	     "                           No effect with USB card readers.\n"
-	     "                           TYPE can be 'trim' or 'secure'.\n"
-	     "                           'secure' is currently not supported by Linux.\n"
-	     "  -f, --force-fat32        Force format SDXC cards as FAT32.\n"
-	     "                           No effect on other types of SD cards.\n"
 	     "  -l, --label LABEL        Volume label. Maximum 11 uppercase characters.\n"
+	     "  -e, --erase TYPE         Erases the whole card before formatting (TRIM).\n"
+	     "                           No effect with USB card readers.\n"
+	     "                           TYPE should be 'trim'.\n"
+	     "  -f, --force-fat32        Force FAT32 for SDXC cards.\n"
+	     "  -c, --capacity SECTORS   Override capacity for fake cards.\n"
+	     "  -b, --big-clusters       NOT RECOMMENDED. In combination with -f on SDXC cards\n"
+	     "                           this will set the logical sector size higher than 512\n"
+	     "                           to bypass the FAT32 64 KiB cluster size limit.\n"
+	     "                           Many FAT drivers including the one in Windows\n"
+	     "                           will not mount the filesystem or corrupt it!\n"
+	     //"  -d, --dry-run            Only pretend to format the card (non-destructive).\n"
 	     "  -v, --verbose            Show format details.\n"
 	     "  -h, --help               Output this help.\n");
 }
@@ -30,31 +33,36 @@ static void printHelp(void)
 int main(const int argc, char *const argv[])
 {
 	static const struct option long_options[] =
-	{{   "capacity", required_argument, NULL, 'c'},
-	// {    "dry-run",       no_argument, NULL, 'd'},
-	 {      "erase", required_argument, NULL, 'e'},
-	 {"force-fat32",       no_argument, NULL, 'f'},
-	 {      "label", required_argument, NULL, 'l'},
-	 {    "verbose",       no_argument, NULL, 'v'},
-	 {       "help",       no_argument, NULL, 'h'},
-	 {         NULL,                 0, NULL,   0}};
+	{{"big-clusters",       no_argument, NULL, 'b'},
+	 {    "capacity", required_argument, NULL, 'c'},
+	// {     "dry-run",       no_argument, NULL, 'd'},
+	 {       "erase", required_argument, NULL, 'e'},
+	 { "force-fat32",       no_argument, NULL, 'f'},
+	 {       "label", required_argument, NULL, 'l'},
+	 {     "verbose",       no_argument, NULL, 'v'},
+	 {        "help",       no_argument, NULL, 'h'},
+	 {          NULL,                 0, NULL,   0}};
 
 	u64 overrTotSec = 0;
 	ArgFlags flags{};
 	char label[12]{};
 	while(1)
 	{
-		const int c = getopt_long(argc, argv, "c:" /*d*/ "e:fl:vh", long_options, NULL);
+		const int c = getopt_long(argc, argv, "bc:" /*d*/ "e:fl:vh", long_options, NULL);
 		if(c == -1) break;
 
 		switch(c)
 		{
+			case 'b':
+				flags.bigClusters = 1;
+				break;
 			case 'c':
 				{
+					// Temporary limit of 2 TiB.
 					overrTotSec = strtoull(optarg, NULL, 0);
-					if(overrTotSec == 0 || overrTotSec > 1ull<<32) // Max 2 TiB.
+					if(overrTotSec == 0 || overrTotSec > 1ull<<32)
 					{
-						fputs("Error: Image size 0 or out of range.\n", stderr);
+						fputs("Error: Capacity 0 or out of range.\n", stderr);
 						return ERR_INVALID_ARG;
 					}
 				}
@@ -132,7 +140,7 @@ int main(const int argc, char *const argv[])
 	try
 	{
 		setVerboseMode(flags.verbose);
-		res = formatSd(devPath, (*label != 0 ? label : NULL), flags, overrTotSec);
+		res = formatSd(devPath, label, flags, overrTotSec);
 	}
 	catch(const std::exception &e)
 	{

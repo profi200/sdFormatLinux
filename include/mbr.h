@@ -29,4 +29,4 @@ static_assert(offsetof(Mbr, bootSig) == 510, "Member bootSig of Mbr not at offse
 
 
 
-int createMbrAndPartition(const FormatParams *const params, BufferedFsWriter &dev);
+int createMbrAndPartition(const FormatParams &params, BufferedFsWriter &dev);

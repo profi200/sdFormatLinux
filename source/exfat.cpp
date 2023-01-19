@@ -17,8 +17,10 @@ u32 calcExFatBootChecksum(const u8 *data, const u16 bytesPerSector)
 	return checksum;
 }
 
-void calcFormatExFat(void) // (const u64 totSec, FormatParams *const paramsOut)
+void calcFormatExFat(FormatParams &params)
 {
+	(void)params;
+
 	// TODO
 	fputs("exFAT is not supported yet.\n", stderr);
 }

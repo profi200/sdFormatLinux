@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include "types.h"
+#include "format.h"
 
 // References:
 // exFAT: https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification
@@ -10,9 +11,9 @@
 // Boot Sector.
 typedef struct
 {
-	u8 jumpBoot[3];                  // {0xEB, 0x76, 0x90}.
+	u8  jumpBoot[3];                  // {0xEB, 0x76, 0x90}.
 	char fileSystemName[8];          // "EXFAT   ".
-	u8 mustBeZero[53];
+	u8  mustBeZero[53];
 	u64 partitionOffset;             // Arbitrary value or 0 = ignore this field.
 	u64 volumeLength;                // Minimum "2^20 / 2^BytesPerSectorShift", maximum "2^64 - 1". If excess space sub-region size = 0 then max. is "ClusterHeapOffset + (2^32 - 11) * 2^SectorsPerClusterShift".
 	u32 fatOffset;                   // Minimum "24", maximum "ClusterHeapOffset - (FatLength * NumberOfFats)".
@@ -28,8 +29,8 @@ typedef struct
 	u8  numberOfFats;                // "1" or "2" (TexFAT only).
 	u8  driveSelect;                 // Arbitrary value. Recommended 0x80.
 	u8  percentInUse;                // 0-100 "percentage of allocated clusters in the Cluster Heap, rounded down to the nearest integer" or 0xFF if unknown.
-	u8 reserved[7];
-	u8 bootCode[390];                // Bootstrapping code or 0xF4 filled (x86 halt).
+	u8  reserved[7];
+	u8  bootCode[390];               // Bootstrapping code or 0xF4 filled (x86 halt).
 	u16 bootSignature;               // 0xAA55.
 	//u8 excessSpace[(1u<<bytesPerSectorShift) - 512];
 } BootSector;
@@ -38,10 +39,10 @@ static_assert(offsetof(BootSector, bootSignature) == 510, "Member bootSignature 
 // Extended Boot Sector.
 /*typedef struct
 {
-	u8 extendedBootCode[(1u<<bytesPerSectorShift) - 4];
+	u8  extendedBootCode[(1u<<bytesPerSectorShift) - 4];
 	u32 extendedBootSignature;                          // 0xAA550000.
 } ExtendedBootSector;*/
 
 
 
-void calcFormatExFat(void); // (const u64 totSec, FormatParams *const paramsOut)
+void calcFormatExFat(FormatParams &params);

@@ -24,8 +24,11 @@
 }*/
 
 // TODO: Rewrite to use less args for printf().
-static void printVbr(const Vbr *vbr, const u32 partStartLba)
+static void printVbr(const Vbr *vbr, u32 partStartLba)
 {
+	// Adjust for logical sectors.
+	partStartLba /= vbr->bytesPerSec>>9;
+
 	printf("Volume Boot Record:\n"
 	       "\tjmp instruction:            0x%02" PRIX8 " 0x%02" PRIX8 " 0x%02" PRIX8 "\n"
 	       "\tOEM name:                   \"%.8s\"\n\n"
@@ -80,7 +83,6 @@ static void printVbr(const Vbr *vbr, const u32 partStartLba)
 	}
 	else // FAT32
 	{
-		// TODO: Test this.
 		printf("Extended BIOS Parameter Block:\n"
 		       "\tSectors per FAT (FAT32):    %" PRIu32 "\n"
 		       "\tFlags:                      0x%04" PRIX16 "\n"
@@ -118,10 +120,10 @@ static void printVbr(const Vbr *vbr, const u32 partStartLba)
 	const u32 fatSize = (isFat32 ? vbr->fat32.fatSz32 : vbr->fatSz16);
 	const u32 rootDirSectors = ((32 * vbr->rootEntCnt) + (vbr->bytesPerSec - 1)) / vbr->bytesPerSec;
 	const u32 dataStart = vbr->rsvdSecCnt + (fatSize * vbr->numFats) + rootDirSectors;
-	printf("First FAT at %" PRIu32 " (%" PRIu32 ").\n"
-	       "Second FAT at %" PRIu32 " (%" PRIu32 ").\n"
-	       "Root directory at %" PRIu32 " (%" PRIu32 ").\n"
-	       "Data area at %" PRIu32 " (%" PRIu32 ").\n",
+	printf("First FAT at %" PRIu32 " (absolute %" PRIu32 ").\n"
+	       "Second FAT at %" PRIu32 " (absolute %" PRIu32 ").\n"
+	       "Root directory at %" PRIu32 " (absolute %" PRIu32 ").\n"
+	       "Data area at %" PRIu32 " (absolute %" PRIu32 ").\n",
 	       vbr->rsvdSecCnt, partStartLba + vbr->rsvdSecCnt,
 	       vbr->rsvdSecCnt + fatSize, partStartLba + vbr->rsvdSecCnt + fatSize,
 	       dataStart - rootDirSectors, partStartLba + (dataStart - rootDirSectors),
@@ -188,13 +190,13 @@ int printDiskInfo(const char *const path)
 
 		if(fseek(f, 512 * entry.startLBA, SEEK_SET) == 0)
 		{
-			Vbr br{};
-			if(fread(&br, sizeof(Vbr), 1, f) != 1)
+			Vbr vbr{};
+			if(fread(&vbr, sizeof(Vbr), 1, f) != 1)
 			{
 				res = 3;
 				break;
 			}
-			printVbr(&br, entry.startLBA);
+			printVbr(&vbr, entry.startLBA);
 		}
 		else
 		{

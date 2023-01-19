@@ -34,7 +34,7 @@ static u32 lba2chs(u64 lba, const u32 heads, const u32 secPerTrk)
 }
 
 // TODO: Rewrite this function to use partSize to determine the fs type.
-int createMbrAndPartition(const FormatParams *const params, BufferedFsWriter &dev)
+int createMbrAndPartition(const FormatParams &params, BufferedFsWriter &dev)
 {
 	// Master Boot Record (MBR).
 	// Generate a new, random disk signature.
@@ -48,15 +48,16 @@ int createMbrAndPartition(const FormatParams *const params, BufferedFsWriter &de
 	entry.status = 0x00;
 
 	// Set start C/H/S.
-	const u32 partStart = params->partStart;
-	const u32 heads     = params->heads;
-	const u32 secPerTrk = params->secPerTrk;
-	const u32 startCHS  = lba2chs(partStart, heads, secPerTrk);
+	const u32 bytesPerSec = params.bytesPerSec;
+	const u32 partStart   = params.partStart * (bytesPerSec>>9); // Convert back to physical sectors.
+	const u32 heads       = params.heads;
+	const u32 secPerTrk   = params.secPerTrk;
+	const u32 startCHS    = lba2chs(partStart, heads, secPerTrk);
 	memcpy(entry.startCHS, &startCHS, 3);
 
 	// Set partition filesystem type.
-	const u8 fatBits   = params->fatBits;
-	const u64 totSec   = params->totSec;
+	const u8 fatBits   = params.fatBits;
+	const u64 totSec   = params.totSec * (bytesPerSec>>9); // Convert back to physical sectors.
 	const u64 partSize = totSec - partStart; // TODO: Is this correct or should we align the end?
 	u8 type;
 	if(fatBits == 12)               type = 0x01; // FAT12 (16/32 MiB).

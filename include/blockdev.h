@@ -79,7 +79,7 @@ public:
 	 *
 	 * @return     Returns 0 on success or errno.
 	 */
-	int discardAll(const bool secure = false) const noexcept;
+	int eraseAll(const bool secure = false) const noexcept;
 
 	/**
 	 * @brief      Closes the block device.

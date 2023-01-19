@@ -107,11 +107,11 @@ public:
 	 *
 	 * @return     Returns 0 on success or errno.
 	 */
-	int discardAll(const bool secure = false) noexcept
+	int eraseAll(const bool secure = false) noexcept
 	{
-		memset(m_buf.get(), 0, m_pos & m_blkMask);
+		//memset(m_buf.get(), 0, m_pos & m_blkMask);
 		m_pos = 0;
-		return BlockDev::discardAll(secure);
+		return BlockDev::eraseAll(secure);
 	}
 
 	/**

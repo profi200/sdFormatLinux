@@ -12,19 +12,29 @@
 #include "privileges.h"
 
 
+typedef struct
+{
+	u16 cap; // Capacity in MiB.
+	u8  heads;
+	u8  secPerTrk;
+} GeometryData;
+
+typedef struct
+{
+	u8  capLog2; // log2(capacity in sectors).
+	u8  fatBits;
+	u16 secPerClus;
+	u32 alignment;
+} AlignData;
+
+
 
 // TODO: fatBits is determined from SC and TS.
-static bool getFormatParams(const u64 totSec, const bool forceSdxcFat32, FormatParams &paramsOut)
+static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams &params)
 {
 	if(totSec == 0) return false;
-	if(totSec >= 1ull<<32 && forceSdxcFat32) return false;
+	if(flags.forceFat32 && totSec > MAX_CAPACITY_FAT32) return false;
 
-	typedef struct
-	{
-		u16 cap; // Capacity in MiB.
-		u8  heads;
-		u8  secPerTrk;
-	} GeometryData;
 	static const GeometryData geometryTable[10] =
 	{
 		{   2,   2, 16}, // <= 2     MiB.
@@ -39,13 +49,6 @@ static bool getFormatParams(const u64 totSec, const bool forceSdxcFat32, FormatP
 		{   0, 255, 63}  // Everything higher.
 	};
 
-	typedef struct
-	{
-		u8  capLog2; // log2(capacity in sectors).
-		u8  fatBits;
-		u16 secPerClus;
-		u32 alignment;
-	} AlignData;
 	static const AlignData alignTable[10] =
 	{
 		{14, 12,   16,     16}, // <=8   MiB.
@@ -60,29 +63,74 @@ static bool getFormatParams(const u64 totSec, const bool forceSdxcFat32, FormatP
 		{ 0,  0,    0,      0}  // Higher is not supported (yet).
 	};
 
-	paramsOut.totSec = totSec;
-
 	const GeometryData *geometryData = geometryTable;
 	while(geometryData->cap != 0 && totSec>>11 > geometryData->cap) geometryData++;
-	paramsOut.heads     = geometryData->heads;
-	paramsOut.secPerTrk = geometryData->secPerTrk;
+	params.heads     = geometryData->heads;
+	params.secPerTrk = geometryData->secPerTrk;
 
 	const AlignData *alignParams = alignTable;
 	while(alignParams->capLog2 != 0 && totSec > 1ull<<alignParams->capLog2) alignParams++;
-	if(alignParams->capLog2 == 0)
+	const u8 capLog2 = alignParams->capLog2;
+	if(capLog2 == 0)
 	{
-		fputs("Error: SD card capacity not supported.", stderr);
+		fputs("Error: SD card capacity not supported.\n", stderr);
 		return false;
 	}
 
-	const u8 fatBits = (alignParams->capLog2 > 26 && forceSdxcFat32 ? 32 : alignParams->fatBits);
-	paramsOut.fatBits    = fatBits;
-	paramsOut.alignment  = alignParams->alignment;
-	paramsOut.secPerClus = alignParams->secPerClus;
+	u16 bytesPerSec = 512;
+	u8  fatBits     = alignParams->fatBits;
+	u32 secPerClus  = alignParams->secPerClus;
+	if(flags.forceFat32 && fatBits > 32)
+	{
+		fatBits = 32;
 
-	if(fatBits <= 16)      calcFormatFat((u32)totSec, paramsOut);
-	else if(fatBits == 32) calcFormatFat32((u32)totSec, paramsOut);
-	else                   calcFormatExFat(/*totSec, *paramsOut*/); // TODO
+		if(flags.bigClusters)
+		{
+			// Increase logical sector size to work around the sectors per cluster limitation for FAT32.
+			if(capLog2 == 28)      bytesPerSec = 1024; // <=128 GiB.
+			else if(capLog2 == 30) bytesPerSec = 2048; // <=512 GiB.
+			else                   bytesPerSec = 4096; // <=2   TiB.
+			secPerClus = 128;
+		}
+		else if(secPerClus > 128)
+		{
+			secPerClus = 128;
+			fputs("Warning: FAT32 doesn't support clusters bigger than 64 KiB. Overriding.\n", stderr);
+		}
+	}
+	params.totSec      = totSec / (bytesPerSec>>9);
+	params.bytesPerSec = bytesPerSec;
+	params.fatBits     = fatBits;
+	params.alignment   = alignParams->alignment / (bytesPerSec>>9);
+	params.secPerClus  = secPerClus;
+
+	if(fatBits <= 16)      calcFormatFat(params);
+	else if(fatBits == 32) calcFormatFat32(params);
+	else                   calcFormatExFat(params);
+
+	if(fatBits <= 32)
+	{
+		// TODO: More sanity checks.
+		if(params.rsvdSecCnt > 0xFFFF)
+		{
+			fputs("Error: Reserved sector count overflowed. Can't format the SD card with these parameters.\n", stderr);
+			return false;
+		}
+		if(params.secPerFat * bytesPerSec / (fatBits / 8) < params.maxClus)
+		{
+			fputs("Error: FAT doesn't contain enough entries to allocate all clusters.\n", stderr);
+			return false;
+		}
+		const u32 calcFsArea = params.rsvdSecCnt + (2 * params.secPerFat) +
+		                       ((32 * (fatBits < 32 ? 512 : 0) + bytesPerSec - 1) / bytesPerSec);
+		if(params.fsAreaSize != calcFsArea)
+		{
+			fputs("Error: Filesystem area smaller than reserved sectors + FATs.\n", stderr);
+			return false;
+		}
+		/*if(params.fsAreaSize > params.alignment)
+			fputs("Warning: Filesystem area overlaps with data area. May reduce performance and lifetime.\n", stderr);*/
+	}
 
 	return true;
 }
@@ -96,6 +144,7 @@ static void printFormatParams(const FormatParams &params)
 	else                          fsName = "exFAT";
 
 	printf("Filesystem type:      %s\n", fsName);
+	printf("Bytes per sector:     %" PRIu16 "\n", params.bytesPerSec);
 	printf("Heads:                %" PRIu8 "\n", params.heads);
 	printf("Sectors per track:    %" PRIu8 "\n", params.secPerTrk);
 	printf("Alignment:            %" PRIu32 "\n", params.alignment);
@@ -107,25 +156,23 @@ static void printFormatParams(const FormatParams &params)
 	printf("Maximum clusters:     %" PRIu32 "\n", params.maxClus);
 }
 
-u32 formatSd(const char *const path, const char *const label, const ArgFlags flags, const u64 overrTotSec)
+u32 formatSd(const char *const path, const std::string &label, const ArgFlags flags, const u64 overrTotSec)
 {
 	BufferedFsWriter dev;
 	if(dev.open(path) != 0) return ERR_DEV_OPEN;
 	dropPrivileges();
 
-	// The smallest card we can format without running into issues is 64 KiB.
-	// TODO: Also test with non-pow2 sizes.
 	u64 totSec = dev.getSectors();
-	if(totSec < (1024 * 64 / 512))
+	if(totSec < MIN_CAPACITY)
 	{
 		fputs("SD card capacity too small.\n", stderr);
 		return ERR_DEV_TOO_SMALL;
 	}
 
 	// Allow overriding the capacity only if the new capacity is lower.
-	if(overrTotSec >= (1024 * 64 / 512) && overrTotSec < totSec)
+	if(overrTotSec >= MIN_CAPACITY && overrTotSec < totSec)
 		totSec = overrTotSec;
-	verbosePrintf("SD card contains %" PRIu64 " sectors.\n", totSec);
+	printf("SD card contains %" PRIu64 " sectors.\n", totSec);
 
 	if(flags.erase || flags.secErase)
 	{
@@ -133,27 +180,32 @@ u32 formatSd(const char *const path, const char *const label, const ArgFlags fla
 
 		// Note: Linux doesn't support secure erase even if it's technically
 		//       possible by password locking the card and then forcing erase.
-		const int discardRes = dev.discardAll(flags.secErase);
-		if(discardRes == EOPNOTSUPP)
+		const int eraseRes = dev.eraseAll(flags.secErase);
+		if(eraseRes == EOPNOTSUPP)
 		{
-			fputs("SD card can't be erased. Ignoring.\n", stderr);
+			fputs("SD card erase not supported. Ignoring.\n", stderr);
 		}
-		else if(discardRes != 0) return ERR_ERASE;
+		else if(eraseRes != 0) return ERR_ERASE;
 	}
 
+	// Collect and calculate all the infos needed for formatting.
 	FormatParams params{};
-	getFormatParams(totSec, flags.forceFat32, params);
+	if(!getFormatParams(totSec, flags, params))
+	{
+		fputs("The SD card can not be formatted with the given parameters.\n", stderr);
+		return ERR_FORMAT_PARAMS;
+	}
 
 	// Create a new Master Boot Record and partition.
 	verbosePuts("Creating new partition table and partition...");
-	if(createMbrAndPartition(&params, dev) != 0) return ERR_PARTITION;
+	if(createMbrAndPartition(params, dev) != 0) return ERR_PARTITION;
 
 	// Clear filesystem areas and write a new Volume Boot Record.
 	// TODO: Label should be upper case and some chars are not allowed. Implement conversion + checks.
 	//       mkfs.fat allows lower case but warns about it.
 	verbosePuts("Formatting the partition...");
-	// TODO: Depending on FS type call the format function here.
 	if(makeFsFat(params, dev, label) != 0) return ERR_FORMAT;
+	// TODO: exFAT.
 
 	// Explicitly close dev to get the result.
 	if(dev.close() != 0) return ERR_CLOSE_DEV;

@@ -204,8 +204,14 @@ u32 formatSd(const char *const path, const std::string &label, const ArgFlags fl
 	// TODO: Label should be upper case and some chars are not allowed. Implement conversion + checks.
 	//       mkfs.fat allows lower case but warns about it.
 	verbosePuts("Formatting the partition...");
-	if(makeFsFat(params, dev, label) != 0) return ERR_FORMAT;
-	// TODO: exFAT.
+	if(params.fatBits <= 32)
+	{
+		if(makeFsFat(params, dev, label) != 0) return ERR_FORMAT;
+	}
+	else
+	{
+		// TODO: exFAT.
+	}
 
 	// Explicitly close dev to get the result.
 	if(dev.close() != 0) return ERR_CLOSE_DEV;

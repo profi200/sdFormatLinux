@@ -110,17 +110,19 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 
 	if(fatBits <= 32)
 	{
-		// TODO: More sanity checks.
 		if(params.rsvdSecCnt > 0xFFFF)
 		{
 			fputs("Error: Reserved sector count overflowed. Can't format the SD card with these parameters.\n", stderr);
 			return false;
 		}
-		if(params.secPerFat * bytesPerSec / (fatBits / 8) < params.maxClus)
+
+		const u32 maxClus = params.maxClus;
+		if(params.secPerFat * bytesPerSec / (fatBits / 8) < maxClus)
 		{
 			fputs("Error: FAT doesn't contain enough entries to allocate all clusters.\n", stderr);
 			return false;
 		}
+
 		const u32 calcFsArea = params.rsvdSecCnt + (2 * params.secPerFat) +
 		                       ((32 * (fatBits < 32 ? 512 : 0) + bytesPerSec - 1) / bytesPerSec);
 		if(params.fsAreaSize != calcFsArea)
@@ -128,9 +130,23 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 			fputs("Error: Filesystem area smaller than reserved sectors + FATs.\n", stderr);
 			return false;
 		}
+
 		/*if(params.fsAreaSize > params.alignment)
 			fputs("Warning: Filesystem area overlaps with data area. May reduce performance and lifetime.\n", stderr);*/
+
+		// fatgen103.doc: Less than 4085 is FAT12. Less than 65525 is FAT16. Otherwise FAT32.
+		// mkfs.fat:      Up to 4084 is FAT12. 4087-65524 is FAT16. 65525-268435444 is FAT32.
+		// (Win) fastfat.sys, (Linux) msdos.ko/vfat.ko detect FAT32 when fatSz16 is set to zero.
+		// Note: mkfs uses different values because of many FAT drivers with off by X bugs.
+		const u32 upperBound = 0x0FFFFFF4u & (0xFFFFFFFFu>>(32 - fatBits)); // 0xFF4, 0xFFF4 and 0x0FFFFFF4.
+		if((fatBits == 12 && maxClus > 4084u) || (fatBits == 16 && maxClus < 4087u) ||
+		   (fatBits == 32 && maxClus < 65525u) || maxClus > upperBound)
+		{
+			fputs("Error: Too few/many clusters for FAT variant.\n", stderr);
+			return false;
+		}
 	}
+	// TODO: exFAT checks.
 
 	return true;
 }

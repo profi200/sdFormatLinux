@@ -5,20 +5,20 @@ TARGET   := $(notdir $(CURDIR))
 BUILD    := build
 INCLUDES := include
 SOURCES  := source
-DEFINES  :=
+DEFINES  := -D_FORTIFY_SOURCE=2
 
 
 # Compiler settings
 ARCH     :=
-CFLAGS   := $(ARCH) -std=c17 -O2 -g -fstrict-aliasing \
-			-ffunction-sections -fdata-sections -Wall -Wextra \
-			-Wstrict-aliasing=2
-CXXFLAGS := $(ARCH) -std=c++20 -O2 -g -fstrict-aliasing \
-			-ffunction-sections -fdata-sections -Wall -Wextra \
-			-Wstrict-aliasing=2
-ASFLAGS  := $(ARCH) -O2 -g -x assembler-with-cpp
+CFLAGS   := $(ARCH) -std=c17 -O2 -g -fPIE -fstrict-aliasing \
+			-ffunction-sections -fdata-sections -fstack-protector-strong \
+			-Wall -Wextra -Wstrict-aliasing=2
+CXXFLAGS := $(ARCH) -std=c++20 -O2 -g -fPIE -fstrict-aliasing \
+			-ffunction-sections -fdata-sections -fstack-protector-strong \
+			-Wall -Wextra -Wstrict-aliasing=2
+ASFLAGS  := $(ARCH) -O2 -g -fPIE -x assembler-with-cpp
 ARFLAGS  := -rcs
-LDFLAGS  := $(ARCH) -O2 -s -Wl,--gc-sections
+LDFLAGS  := $(ARCH) -O2 -s -pie -fPIE -Wl,--gc-sections,-z,relro,-z,now,-z,noexecstack
 
 PREFIX   :=
 CC       := $(PREFIX)gcc

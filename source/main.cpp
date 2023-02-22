@@ -1,3 +1,4 @@
+#include <clocale>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -5,6 +6,7 @@
 #include <getopt.h>
 #include "errors.h"
 #include "format.h"
+#include "fat_label.h"
 #include "verbose_printf.h"
 
 
@@ -32,6 +34,8 @@ static void printHelp(void)
 
 int main(const int argc, char *const argv[])
 {
+	setlocale(LC_CTYPE, ""); // We could also default to "en_US.UTF-8".
+
 	static const struct option long_options[] =
 	{{"big-clusters",       no_argument, NULL, 'b'},
 	 {    "capacity", required_argument, NULL, 'c'},
@@ -89,29 +93,8 @@ int main(const int argc, char *const argv[])
 				break;
 			case 'l':
 				{
-					if(strlen(optarg) > 11)
-					{
-						fputs("Error: Label is longer than 11 characters.\n", stderr);
+					if(convertCheckLabel(optarg, label) == 0)
 						return ERR_INVALID_ARG;
-					}
-					strncpy(label, optarg, 11);
-					/*for(u32 i = 0; i < 11; i++)
-					{
-						const unsigned char lc = label[i];
-						if(lc < 0x20 || lc == 0x22 ||
-						   (lc >= 0x2A && lc <= 0x2C) ||
-						   lc == 0x2E || lc == 0x2F ||
-						   (lc >= 0x3A && lc <= 0x3F) ||
-						   (lc >= 0x5B && lc <= 0x5D) ||
-						   lc == 0x7C)
-						{
-							fputs("Error: Label contains invalid characters.\n", stderr);
-							return ERR_INVALID_ARG;
-						}
-						// TODO: The label should be encoded in the system's DOS code page. Convert from UTF-8 to DOS code page.
-						// TODO: Check for uppercase chars and give a warning.
-						// TODO: Do not allow the "NO NAME" label?
-					}*/
 				}
 				break;
 			case 'v':

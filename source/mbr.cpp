@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #include <cstdio>
 #include <cstring>
 #include <sys/random.h> // getrandom()...

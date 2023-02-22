@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #define _FILE_OFFSET_BITS 64
 #include <cstdio>
 #include <cstring>

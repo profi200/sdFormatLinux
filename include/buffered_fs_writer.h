@@ -1,5 +1,7 @@
 #pragma once
 
+// SPDX-License-Identifier: MIT
+
 #include <cstring>
 #include <memory>
 #include <stdexcept>

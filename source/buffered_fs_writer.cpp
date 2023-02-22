@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //#include <cstdio>
 #include "buffered_fs_writer.h"
 

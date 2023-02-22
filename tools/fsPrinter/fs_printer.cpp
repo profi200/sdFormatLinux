@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #include <cstdio>
 #include "../../include/mbr.h"
 #include "../../include/exfat.h"

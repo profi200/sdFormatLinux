@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #include <cstdlib>
 #include <unistd.h>
 #include "verbose_printf.h"

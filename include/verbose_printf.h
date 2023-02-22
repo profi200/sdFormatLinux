@@ -1,5 +1,7 @@
 #pragma once
 
+// SPDX-License-Identifier: MIT
+
 
 
 void setVerboseMode(const bool verbose);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #include <clocale>
 #include <cstdio>
 #include <cstdlib>

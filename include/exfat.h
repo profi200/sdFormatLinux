@@ -1,5 +1,7 @@
 #pragma once
 
+// SPDX-License-Identifier: MIT
+
 #include <cstddef>
 #include "types.h"
 #include "format.h"

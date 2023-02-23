@@ -16,7 +16,6 @@ union ArgFlags
 	struct
 	{
 		u8 bigClusters : 1;
-		//u8 dryRun      : 1;
 		u8 erase       : 1;
 		u8 forceFat32  : 1;
 		u8 secErase    : 1;

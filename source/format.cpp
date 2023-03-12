@@ -118,8 +118,23 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 			return false;
 		}
 
+		// Before doing more checks based on maxClus actually check maxClus.
+		// fatgen103.doc: Less than 4085 is FAT12. Less than 65525 is FAT16. Otherwise FAT32.
+		// mkfs.fat:      Up to 4084 is FAT12. 4087-65524 is FAT16. 65525-268435446 is FAT32.
+		// (Win) fastfat.sys, (Linux) msdos.ko/vfat.ko detect FAT32 when fatSz16 is set to zero.
+		// Note: mkfs uses different values because of many FAT drivers with off by X bugs.
 		const u32 maxClus = params.maxClus;
-		if(params.secPerFat * bytesPerSec / (fatBits / 8) < maxClus)
+		if((fatBits == 12 && maxClus > FAT12_MAX_CLUS) ||
+		   (fatBits == 16 && (maxClus < 4087u || maxClus > FAT16_MAX_CLUS)) ||
+		   (fatBits == 32 && (maxClus < 65525u || maxClus > FAT32_MAX_CLUS)))
+		{
+			fputs("Error: Invalid number of clusters for FAT variant.\n", stderr);
+			return false;
+		}
+
+		// This can be a warning since having less allocatable clusters is actually fine.
+		// However if we get less clusters something probably went wrong while calculating.
+		if(params.secPerFat * bytesPerSec / (fatBits / 8) < maxClus + 2) // Plus 2 reserved entries.
 		{
 			fputs("Error: FAT doesn't contain enough entries to allocate all clusters.\n", stderr);
 			return false;
@@ -129,24 +144,12 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 		                       ((32 * (fatBits < 32 ? 512 : 0) + bytesPerSec - 1) / bytesPerSec);
 		if(params.fsAreaSize != calcFsArea)
 		{
-			fputs("Error: Filesystem area smaller than reserved sectors + FATs.\n", stderr);
+			fputs("Error: Filesystem area smaller than reserved sectors + FATs + root entries.\n", stderr);
 			return false;
 		}
 
-		/*if(params.fsAreaSize > params.alignment)
-			fputs("Warning: Filesystem area overlaps with data area. May reduce performance and lifetime.\n", stderr);*/
-
-		// fatgen103.doc: Less than 4085 is FAT12. Less than 65525 is FAT16. Otherwise FAT32.
-		// mkfs.fat:      Up to 4084 is FAT12. 4087-65524 is FAT16. 65525-268435444 is FAT32.
-		// (Win) fastfat.sys, (Linux) msdos.ko/vfat.ko detect FAT32 when fatSz16 is set to zero.
-		// Note: mkfs uses different values because of many FAT drivers with off by X bugs.
-		const u32 upperBound = 0x0FFFFFF4u & (0xFFFFFFFFu>>(32 - fatBits)); // 0xFF4, 0xFFF4 and 0x0FFFFFF4.
-		if((fatBits == 12 && maxClus > 4084u) || (fatBits == 16 && maxClus < 4087u) ||
-		   (fatBits == 32 && maxClus < 65525u) || maxClus > upperBound)
-		{
-			fputs("Error: Too few/many clusters for FAT variant.\n", stderr);
-			return false;
-		}
+		//if(params.fsAreaSize > params.alignment)
+		//	fputs("Warning: Filesystem area overlaps with data area. May reduce performance and lifetime.\n", stderr);
 	}
 	// TODO: exFAT checks.
 

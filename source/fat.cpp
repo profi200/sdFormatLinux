@@ -128,7 +128,7 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 	if(res != 0) return res;
 
 	// Prepare label.
-	char labelBuf[12] = "NO NAME    ";
+	char labelBuf[12] = EBPB_VOL_LAB_NO_NAME;
 	if(!label.empty())
 	{
 		memset(labelBuf, ' ', 11); // Padding must be spaces.
@@ -137,12 +137,10 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		memcpy(labelBuf, label.c_str(), labelLen);
 	}
 
-	// Volume Boot Record (VBR).
-	Vbr vbr{};
-	vbr.jmpBoot[0] = 0xEB;
-	vbr.jmpBoot[1] = 0x00;
-	vbr.jmpBoot[2] = 0x90;
-	memcpy(vbr.oemName, "MSWIN4.1", 8); // SDFormatter hardcodes this.
+	// Boot sector.
+	BootSec bs{};
+	memcpy(bs.jmpBoot, "\xEB\x00\x90", 3);      // Doesn't jump to bootCode but it's what SDFormatter uses.
+	memcpy(bs.oemName, BS_DEFAULT_OEM_NAME, 8);
 
 	// BIOS Parameter Block (BPB).
 	const u32 secPerClus  = params.secPerClus;
@@ -150,52 +148,52 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 	const u8  fatBits     = params.fatBits;
 	const u32 partSectors = static_cast<u32>(params.totSec - partStart);
 	const u32 secPerFat   = params.secPerFat;
-	vbr.bytesPerSec = bytesPerSec;
-	vbr.secPerClus  = secPerClus;
-	vbr.rsvdSecCnt  = rsvdSecCnt;
-	vbr.numFats     = 2;
-	vbr.rootEntCnt  = (fatBits == 32 ? 0 : 512);
-	vbr.totSec16    = (partSectors > 0xFFFF || fatBits == 32 ? 0 : partSectors); // Not used for FAT32.
-	vbr.media       = 0xF8;
-	vbr.fatSz16     = (secPerFat > 0xFFFF || fatBits == 32 ? 0 : secPerFat);     // Not used for FAT32.
-	vbr.secPerTrk   = params.secPerTrk;
-	vbr.numHeads    = params.heads;
-	vbr.hiddSec     = partStart;
-	vbr.totSec32    = (partSectors > 0xFFFF || fatBits == 32 ? partSectors : 0);
-	vbr.sigWord     = 0xAA55;
+	bs.bytesPerSec = bytesPerSec;
+	bs.secPerClus  = secPerClus;
+	bs.rsvdSecCnt  = rsvdSecCnt;
+	bs.numFats     = 2;
+	bs.rootEntCnt  = (fatBits == 32 ? 0 : 512);
+	bs.totSec16    = (partSectors > 0xFFFF || fatBits == 32 ? 0 : partSectors); // Not used for FAT32.
+	bs.media       = BPB_DEFAULT_MEDIA;
+	bs.fatSz16     = (secPerFat > 0xFFFF || fatBits == 32 ? 0 : secPerFat);     // Not used for FAT32.
+	bs.secPerTrk   = params.secPerTrk;
+	bs.numHeads    = params.heads;
+	bs.hiddSec     = partStart;
+	bs.totSec32    = (partSectors > 0xFFFF || fatBits == 32 ? partSectors : 0);
+	bs.sigWord     = EBPB_SIG_WORD;
 
 	if(fatBits < 32)
 	{
 		// Extended BIOS Parameter Block FAT12/FAT16.
-		vbr.fat16.drvNum  = 0x80;
-		vbr.fat16.bootSig = 0x29;
-		vbr.fat16.volId   = makeVolId();
-		memcpy(vbr.fat16.volLab, labelBuf, 11);
-		memcpy(vbr.fat16.filSysType, (fatBits == 12 ? "FAT12   " : "FAT16   "), 8);
-		memset(vbr.fat16.bootCode, 0xF4, sizeof(vbr.fat16.bootCode));
+		bs.ebpb.drvNum  = EBPB_DEFAULT_DRV_NUM;
+		bs.ebpb.bootSig = EBPB_BOOT_SIG;
+		bs.ebpb.volId   = makeVolId();
+		memcpy(bs.ebpb.volLab, labelBuf, 11);
+		memcpy(bs.ebpb.filSysType, (fatBits == 12 ? EBPB_FIL_SYS_TYPE_FAT12 : EBPB_FIL_SYS_TYPE_FAT16), 8);
+		memset(bs.ebpb.bootCode, 0xF4, sizeof(bs.ebpb.bootCode)); // Fill with x86 hlt instructions.
 
-		// Write Vbr.
-		res = dev.write(reinterpret_cast<u8*>(&vbr), sizeof(Vbr));
+		// Write boot sector.
+		res = dev.write(reinterpret_cast<u8*>(&bs), sizeof(BootSec));
 		if(res != 0) return res;
 	}
 	else
 	{
 		// Extended BIOS Parameter Block FAT32.
-		vbr.fat32.fatSz32      = secPerFat;
-		vbr.fat32.extFlags     = 0;
-		vbr.fat32.fsVer        = 0; // 0.0.
-		vbr.fat32.rootClus     = 2; // 2 or the first cluster not marked as defective.
-		vbr.fat32.fsInfoSector = 1;
-		vbr.fat32.bkBootSec    = 6;
-		vbr.fat32.drvNum       = 0x80;
-		vbr.fat32.bootSig      = 0x29;
-		vbr.fat32.volId        = makeVolId();
-		memcpy(vbr.fat32.volLab, labelBuf, 11);
-		memcpy(vbr.fat32.filSysType, "FAT32   ", 8);
-		memset(vbr.fat32.bootCode, 0xF4, sizeof(vbr.fat32.bootCode));
+		bs.ebpb32.fatSz32      = secPerFat;
+		bs.ebpb32.extFlags     = 0;
+		bs.ebpb32.fsVer        = 0; // 0.0.
+		bs.ebpb32.rootClus     = 2; // 2 or the first cluster not marked as defective.
+		bs.ebpb32.fsInfoSector = 1;
+		bs.ebpb32.bkBootSec    = 6;
+		bs.ebpb32.drvNum       = EBPB_DEFAULT_DRV_NUM;
+		bs.ebpb32.bootSig      = EBPB_BOOT_SIG;
+		bs.ebpb32.volId        = makeVolId();
+		memcpy(bs.ebpb32.volLab, labelBuf, 11);
+		memcpy(bs.ebpb32.filSysType, EBPB_FIL_SYS_TYPE_FAT32, 8);
+		memset(bs.ebpb32.bootCode, 0xF4, sizeof(bs.ebpb32.bootCode)); // Fill with x86 hlt instructions.
 
-		// Write Vbr.
-		res = dev.write(reinterpret_cast<u8*>(&vbr), sizeof(Vbr));
+		// Write boot sector.
+		res = dev.write(reinterpret_cast<u8*>(&bs), sizeof(BootSec));
 		if(res != 0) return res;
 
 		// There are apparently drivers based on wrong documentation stating the
@@ -205,50 +203,46 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		if(bytesPerSec > 512)
 		{
 			tmpOffset = curOffset + bytesPerSec - 2;
-			res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
+			res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
 			if(res != 0) return res;
 		}
 
 		// Write FSInfo.
 		FsInfo fsInfo{};
-		fsInfo.leadSig   = 0x41615252;
-		fsInfo.strucSig  = 0x61417272;
+		fsInfo.leadSig   = FS_INFO_LEAD_SIG;
+		fsInfo.strucSig  = FS_INFO_STRUC_SIG;
 		fsInfo.freeCount = params.maxClus - 1;
 		fsInfo.nxtFree   = 3;
-		fsInfo.trailSig  = 0xAA550000;
+		fsInfo.trailSig  = FS_INFO_TRAIL_SIG;
 		res = dev.write(reinterpret_cast<u8*>(&fsInfo), sizeof(FsInfo));
 		if(res != 0) return res;
-
-		// TODO: FSInfo sector signature word needed?
 
 		// The FAT spec says there is actually a third boot sector with just a signature word.
 		tmpOffset = curOffset + (2 * bytesPerSec) + bytesPerSec - 2;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
 		if(res != 0) return res;
 
-		// Write copy of Vbr.
+		// Write copy of boot sector.
 		tmpOffset += 2 + (3 * bytesPerSec);
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr), tmpOffset, sizeof(Vbr));
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs), tmpOffset, sizeof(BootSec));
 		if(res != 0) return res;
 
-		// Write sector signature word of VBR copy.
+		// Write sector signature word of boot sector copy.
 		if(bytesPerSec > 512)
 		{
 			tmpOffset += bytesPerSec - 2;
-			res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
+			res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
 			if(res != 0) return res;
 		}
 
-		// Free cluster count is 0xFFFFFFFF (unknown) for FSInfo copy.
-		fsInfo.freeCount = 0xFFFFFFFF;
+		// Free cluster count is unknown for FSInfo copy.
+		fsInfo.freeCount = FS_INFO_UNK_FREE_COUNT;
 		res = dev.write(reinterpret_cast<u8*>(&fsInfo), sizeof(FsInfo));
 		if(res != 0) return res;
 
-		// TODO: FSInfo sector signature word needed?
-
 		// Write copy of third sector signature word.
 		tmpOffset = curOffset + (8 * bytesPerSec) + bytesPerSec - 2;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&vbr.sigWord), tmpOffset, 2);
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
 		if(res != 0) return res;
 	}
 
@@ -258,14 +252,15 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 	if(fatBits < 32)
 	{
 		// Reserve first 2 FAT entries.
-		*fat = (fatBits == 16 ? 0xFFFFFFF8 : 0x00FFFFF8);
+		u32 rsvdEnt = (fatBits == 16 ? FAT16_EOF<<16 | FAT16_EOF : FAT12_EOF<<12 | FAT12_EOF);
+		*fat = (rsvdEnt & ~0xFFu) | BPB_DEFAULT_MEDIA;
 	}
 	else
 	{
 		// Reserve first 2 FAT entries. A third entry for the root directory cluster.
-		fat[0] = 0x0FFFFFF8;
-		fat[1] = 0x0FFFFFFF;
-		fat[2] = 0x0FFFFFFF;
+		fat[0] = (FAT32_EOF & ~0xFFu) | BPB_DEFAULT_MEDIA;
+		fat[1] = FAT32_EOF;
+		fat[2] = FAT32_EOF;
 		rsvdEntrySize = 3 * 4;
 	}
 
@@ -284,7 +279,7 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 	{
 		FatDir dir{};                   // Make sure all other fields are zero.
 		memcpy(dir.name, labelBuf, 11);
-		dir.attr = 0x08;                // ATTR_VOLUME_ID.
+		dir.attr = DIR_ATTR_VOLUME_ID;
 
 		curOffset += secPerFat * bytesPerSec;
 		res = dev.fillAndWrite(reinterpret_cast<u8*>(&dir), curOffset, sizeof(FatDir));

@@ -21,10 +21,17 @@ ARFLAGS  := -rcs
 LDFLAGS  := $(ARCH) -O2 -s -pie -fPIE -Wl,--gc-sections,-z,relro,-z,now,-z,noexecstack
 
 PREFIX   :=
+ifneq ($(strip $(USE_CLANG)),)
+CC       := $(PREFIX)clang
+CXX      := $(PREFIX)clang++
+AS       := $(PREFIX)clang
+AR       := $(PREFIX)gcc-ar
+else
 CC       := $(PREFIX)gcc
 CXX      := $(PREFIX)g++
 AS       := $(PREFIX)gcc
 AR       := $(PREFIX)gcc-ar
+endif
 
 
 # Do not change anything after this

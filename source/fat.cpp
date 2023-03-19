@@ -139,13 +139,14 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 
 	// Boot sector.
 	BootSec bs{};
-	memcpy(bs.jmpBoot, "\xEB\x00\x90", 3);      // Doesn't jump to bootCode but it's what SDFormatter uses.
+	const u8 fatBits = params.fatBits;
+	const u8 jmpBoot[3] = {0xEB, (u8)(fatBits < 32 ? 0x3C : 0x58), 0x90}; // Note: SDFormatter hardcodes 0xEB 0x00 0x90.
+	memcpy(bs.jmpBoot, jmpBoot, 3);
 	memcpy(bs.oemName, BS_DEFAULT_OEM_NAME, 8);
 
 	// BIOS Parameter Block (BPB).
 	const u32 secPerClus  = params.secPerClus;
 	const u32 rsvdSecCnt  = params.rsvdSecCnt;
-	const u8  fatBits     = params.fatBits;
 	const u32 partSectors = static_cast<u32>(params.totSec - partStart);
 	const u32 secPerFat   = params.secPerFat;
 	bs.bytesPerSec = bytesPerSec;

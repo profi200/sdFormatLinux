@@ -11,28 +11,23 @@
 
 
 // Converts LBA to MBR CHS format.
-// TODO: SDFormatter uses end head 254 for a 16 GB card. Bug?
 static u32 lba2chs(u64 lba, const u32 heads, const u32 secPerTrk)
 {
-	// We can't encode this even with 255 heads and 63 sectors per track.
-	// Returning the maximum in this case is ok.
-	if(lba >= 16450560)
-		return 0x00FFFFFF; // Cylinder 1023, head 255, sector 63.
-
 	const u32 spc = heads * secPerTrk;
-	const u32 c = lba / spc;
+	u32 c = lba / spc;
 	lba %= spc;
-	const u32 h = lba / secPerTrk;
-	const u32 s = lba % secPerTrk + 1;
+	u32 h = lba / secPerTrk;
+	u32 s = lba % secPerTrk + 1;
 
-	// Return the maximum if we can't encode this
-	// and also set the uppermost byte to maximum to indicate an error.
-	if(c > 1023 || h > 255 || s > 63)
-		return 0xFFFFFFFF;
+	// Return the maximum if we can't encode this.
+	if(c >= 1024 || h >= heads || s > secPerTrk)
+	{
+		c = 1023;
+		h = 254;
+		s = 63;
+	}
 
-	//printf("lba2chs(%" PRIu64 ", %" PRIu32 ", %" PRIu32 "): c: %" PRIu32 ", h: %" PRIu32 ", s: %" PRIu32 "\n",
-	//       lba, heads, secPerTrk, c, h, s);
-	return (c & 0xFF)<<16 | (c & 0x300)<<6 | s<<8 | h;
+	return (c & 0xFFu)<<16 | (c & 0x300u)<<6 | s<<8 | h;
 }
 
 // TODO: Rewrite this function to use partSize to determine the fs type.
@@ -62,18 +57,18 @@ int createMbrAndPartition(const FormatParams &params, BufferedFsWriter &dev)
 	const u64 totSec   = params.totSec * (bytesPerSec>>9); // Convert back to physical sectors.
 	const u64 partSize = totSec - partStart; // TODO: Is this correct or should we align the end?
 	u8 type;
-	if(fatBits == 12)               type = 0x01; // FAT12 (16/32 MiB).
+	if(fatBits == 12)          type = 0x01; // FAT12 (16/32 MiB).
 	else if(fatBits == 16)
 	{
-		if(partSize < 65536)        type = 0x04; // FAT16 (<32 MiB). TODO: Is this actually "<" or "<="?
-		else                        type = 0x06; // FAT16 (>=32 MiB).
+		if(partSize < 65536)   type = 0x04; // FAT16 (<32 MiB).
+		else                   type = 0x06; // FAT16 (>=32 MiB).
 	}
 	else if(fatBits == 32)
 	{
-		if((totSec - 1) < 16450560) type = 0x0B; // FAT32 CHS.
-		else                        type = 0x0C; // FAT32 LBA.
+		if(totSec <= 16450560) type = 0x0B; // FAT32 CHS.
+		else                   type = 0x0C; // FAT32 LBA.
 	}
-	else                            type = 0x07; // exFAT.
+	else                       type = 0x07; // exFAT.
 	entry.type = type;
 	verbosePrintf("Partition type: 0x%02" PRIX8 "\n", type);
 

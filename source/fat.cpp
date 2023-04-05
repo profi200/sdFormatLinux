@@ -6,15 +6,10 @@
 #include <ctime>
 #include "types.h"
 #include "fat.h"
+#include "util.h"
 #include "verbose_printf.h"
 
 
-
-static inline u32 divCeil32(const u32 a, const u32 b)
-{
-	//return (a + b - 1) / b;    // Can overflow.
-	return 1u + ((a - 1) / b); // a must be >= 1.
-}
 
 // FAT12/FAT16.
 void calcFormatFat(FormatParams &params)
@@ -26,13 +21,13 @@ void calcFormatFat(FormatParams &params)
 	constexpr u32 bytesPerSec = 512; // Can be hardcoded (no big logical sector support for FAT12/16).
 	constexpr u32 rootEntCnt  = 512;
 	constexpr u32 rsvdSecCnt  = 1;
-	u32 secPerFat             = divCeil32(totSec / secPerClus * fatBits, bytesPerSec * 8);
+	u32 secPerFat             = util::divCeil(totSec / secPerClus * fatBits, bytesPerSec * 8);
 	u32 fsAreaSize;
 	u32 partStart;
 	u32 maxClus;
 	while(1)
 	{
-		fsAreaSize = rsvdSecCnt + 2 * secPerFat + divCeil32(32 * rootEntCnt, bytesPerSec);
+		fsAreaSize = rsvdSecCnt + 2 * secPerFat + util::divCeil(32 * rootEntCnt, bytesPerSec);
 		partStart  = alignment - fsAreaSize % alignment;
 		if(partStart != alignment) partStart += alignment;
 
@@ -40,7 +35,7 @@ void calcFormatFat(FormatParams &params)
 		while(1)
 		{
 			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
-			tmpSecPerFat = divCeil32((2 + maxClus) * fatBits, bytesPerSec * 8);
+			tmpSecPerFat = util::divCeil((2 + maxClus) * fatBits, bytesPerSec * 8);
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -66,7 +61,7 @@ void calcFormatFat32(FormatParams &params)
 	const u32 bytesPerSec = params.bytesPerSec;
 	const u32 alignment   = params.alignment;
 	const u32 secPerClus  = params.secPerClus;
-	u32 secPerFat         = divCeil32(totSec / secPerClus * fatBits, bytesPerSec * 8);
+	u32 secPerFat         = util::divCeil(totSec / secPerClus * fatBits, bytesPerSec * 8);
 	const u32 partStart   = alignment;
 	u32 rsvdSecCnt;
 	u32 fsAreaSize;
@@ -80,7 +75,7 @@ void calcFormatFat32(FormatParams &params)
 		while(1)
 		{
 			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
-			tmpSecPerFat = divCeil32((2 + maxClus) * fatBits, bytesPerSec * 8);
+			tmpSecPerFat = util::divCeil((2 + maxClus) * fatBits, bytesPerSec * 8);
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -101,7 +96,7 @@ void calcFormatFat32(FormatParams &params)
 }
 
 // TODO: This may not be the most accurate.
-static u32 makeVolId(void)
+u32 makeVolId(void)
 {
 	// tm_mon is 0-11 WHY?
 	// tm_sec is 0-60 WHY?
@@ -212,7 +207,7 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		FsInfo fsInfo{};
 		fsInfo.leadSig   = FS_INFO_LEAD_SIG;
 		fsInfo.strucSig  = FS_INFO_STRUC_SIG;
-		fsInfo.freeCount = params.maxClus - 1;
+		fsInfo.freeCount = params.maxClus - 1; // One cluster is reserved for root directory.
 		fsInfo.nxtFree   = 3;
 		fsInfo.trailSig  = FS_INFO_TRAIL_SIG;
 		res = dev.write(reinterpret_cast<u8*>(&fsInfo), sizeof(FsInfo));
@@ -278,12 +273,12 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 	// Create volume label entry in root directory if needed.
 	if(!label.empty())
 	{
-		FatDir dir{};                   // Make sure all other fields are zero.
+		FatDirEnt dir{};                // Make sure all other fields are zero.
 		memcpy(dir.name, labelBuf, 11);
 		dir.attr = DIR_ATTR_VOLUME_ID;
 
 		curOffset += secPerFat * bytesPerSec;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&dir), curOffset, sizeof(FatDir));
+		res = dev.fillAndWrite(reinterpret_cast<u8*>(&dir), curOffset, sizeof(FatDirEnt));
 		if(res != 0) return res;
 	}
 

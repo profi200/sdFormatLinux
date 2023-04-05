@@ -8,7 +8,6 @@
 #include <getopt.h>
 #include "errors.h"
 #include "format.h"
-#include "fat_label.h"
 #include "verbose_printf.h"
 
 
@@ -19,6 +18,7 @@ static void printHelp(void)
 	     "Usage: sdFormatLinux [OPTIONS...] DEVICE\n\n"
 	     "Options:\n"
 	     "  -l, --label LABEL        Volume label. Maximum 11 uppercase characters.\n"
+	     "                           11 arbitrary unicode code points for exFAT.\n"
 	     "  -e, --erase TYPE         Erases the whole card before formatting (TRIM).\n"
 	     "                           No effect with USB card readers.\n"
 	     "                           TYPE should be 'trim'.\n"
@@ -49,7 +49,7 @@ int main(const int argc, char *const argv[])
 
 	u64 overrTotSec = 0;
 	ArgFlags flags{};
-	char label[12]{};
+	char label[4 * 11 + 1]{}; // Worst case 4 bytes per char.
 	while(1)
 	{
 		const int c = getopt_long(argc, argv, "bc:e:fl:vh", long_options, NULL);
@@ -90,8 +90,7 @@ int main(const int argc, char *const argv[])
 				break;
 			case 'l':
 				{
-					if(convertCheckLabel(optarg, label) == 0)
-						return ERR_INVALID_ARG;
+					strncpy(label, optarg, 4 * 11);
 				}
 				break;
 			case 'v':

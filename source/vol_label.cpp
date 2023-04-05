@@ -64,23 +64,32 @@ static bool wchar2cp850(const wchar_t *wStr, char *dosStr)
 	return true;
 }
 
-size_t convertCheckLabel(const char *const label, char *dosLabel)
+// Caution! This expects wcs can hold 13 chars including termination.
+// This way we will know if the string contains more than 11 codepoints.
+static size_t label2wchar(const char *const label, wchar_t *const wcs)
 {
-	// Reserve one more char so we can detect if the label is too long.
-	wchar_t wLabel[13];
-	wLabel[12] = L'\0';
-	const size_t wideChars = mbstowcs(wLabel, label, 12);
-	if(wideChars == (size_t)-1)
+	wcs[12] = L'\0';
+	const size_t wLength = mbstowcs(wcs, label, 12);
+	if(wLength == (size_t)-1)
 	{
 		fputs("Failed to convert label to wide characters.\n", stderr);
 		return 0;
 	}
 
-	if(wideChars > 11)
+	if(wLength > 11)
 	{
 		fputs("Error: Label is too long.\n", stderr);
 		return 0;
 	}
+
+	return wLength;
+}
+
+size_t convertCheckFatLabel(const char *const label, char *dosLabel)
+{
+	wchar_t wLabel[13];
+	const size_t wLength = label2wchar(label, wLabel);
+	if(wLength == 0) return 0;
 
 	for(unsigned i = 0; wLabel[i] != L'\0'; i++)
 	{
@@ -114,5 +123,39 @@ size_t convertCheckLabel(const char *const label, char *dosLabel)
 		}
 	}
 
-	return wideChars;
+	return wLength;
+}
+
+size_t convertCheckExfatLabel(const char *const label, char16_t *utf16Label)
+{
+	wchar_t wLabel[13];
+	if(label2wchar(label, wLabel) == 0) return 0;
+
+	size_t length = 0;
+	wchar_t *wPtr = wLabel;
+	while(length < 11 && *wPtr != L'\0')
+	{
+		const wchar_t wc = *wPtr++;
+		length++;
+		if(wc < 0x10000)
+		{
+			*utf16Label++ = wc;
+			continue;
+		}
+
+		if(length++ == 11)
+		{
+			fputs("Error: Label is too long.\n", stderr);
+			return 0;
+		}
+
+		// Encode as surrogate pair.
+		const wchar_t tmp = wc - 0x10000;
+		*utf16Label++ = 0xD800u + (tmp>>10);
+		*utf16Label++ = 0xDC00u + (tmp & 0x3FFu);
+	}
+
+	*utf16Label = u'\0';
+
+	return length;
 }

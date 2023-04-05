@@ -10,6 +10,7 @@
 #include "fat.h"
 #include "errors.h"
 #include "buffered_fs_writer.h"
+#include "vol_label.h"
 #include "verbose_printf.h"
 #include "privileges.h"
 
@@ -31,7 +32,6 @@ typedef struct
 
 
 
-// TODO: fatBits is determined from SC and TS.
 static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams &params)
 {
 	if(totSec == 0) return false;
@@ -48,9 +48,10 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 		{1008,  32, 63}, // <= 1008  MiB.
 		{2016,  64, 63}, // <= 2016  MiB.
 		{4032, 128, 63}, // <= 4032  MiB.
-		{   0, 255, 63}  // Everything higher.
+		{   0, 255, 63}  // Everything higher. Note: For SDXC (and UC?) end CHS is always max.
 	};
 
+	// Note: 64 bits for exFAT is technically incorrect but we don't use this in any calculation.
 	static const AlignData alignTable[10] =
 	{
 		{14, 12,   16,     16}, // <=8   MiB.
@@ -100,11 +101,11 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 			fputs("Warning: FAT32 doesn't support clusters bigger than 64 KiB. Overriding.\n", stderr);
 		}
 	}
-	params.totSec      = totSec / (bytesPerSec>>9);
+	params.totSec      = PHY2LOG(totSec, bytesPerSec);
+	params.alignment   = PHY2LOG(alignParams->alignment, bytesPerSec);
+	params.secPerClus  = secPerClus;
 	params.bytesPerSec = bytesPerSec;
 	params.fatBits     = fatBits;
-	params.alignment   = alignParams->alignment / (bytesPerSec>>9);
-	params.secPerClus  = secPerClus;
 
 	if(fatBits <= 16)      calcFormatFat(params);
 	else if(fatBits == 32) calcFormatFat32(params);
@@ -134,13 +135,14 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 
 		// This can be a warning since having less allocatable clusters is actually fine.
 		// However if we get less clusters something probably went wrong while calculating.
-		if(params.secPerFat * bytesPerSec / (fatBits / 8) < maxClus + 2) // Plus 2 reserved entries.
+		const u32 secPerFat = params.secPerFat;
+		if(secPerFat * bytesPerSec / (fatBits / 8) < maxClus + 2) // Plus 2 reserved entries.
 		{
 			fputs("Error: FAT doesn't contain enough entries to allocate all clusters.\n", stderr);
 			return false;
 		}
 
-		const u32 calcFsArea = params.rsvdSecCnt + (2 * params.secPerFat) +
+		const u32 calcFsArea = params.rsvdSecCnt + (2 * secPerFat) +
 		                       ((32 * (fatBits < 32 ? 512 : 0) + bytesPerSec - 1) / bytesPerSec);
 		if(params.fsAreaSize != calcFsArea)
 		{
@@ -151,7 +153,33 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 		//if(params.fsAreaSize > params.alignment)
 		//	fputs("Warning: Filesystem area overlaps with data area. May reduce performance and lifetime.\n", stderr);
 	}
-	// TODO: exFAT checks.
+	else
+	{
+		const u32 clusterCount = params.clusterCount;
+		if(clusterCount > EXFAT_MAX_CLUS) // TODO: Lower bound?
+		{
+			fputs("Error: Too many clusters for exFAT.\n", stderr);
+			return false;
+		}
+
+		// This can be a warning since having less allocatable clusters is actually fine.
+		// However if we get less clusters something probably went wrong while calculating.
+		const u32 fatLength = params.fatLength;
+		if(fatLength * bytesPerSec / 4 < clusterCount + 2) // Plus 2 reserved entries.
+		{
+			fputs("Error: FAT doesn't contain enough entries to allocate all clusters.\n", stderr);
+			return false;
+		}
+
+		const u32 fatOffset = params.fatOffset;
+		if(fatOffset < 24 || fatOffset > params.clusterHeapOffset - (fatLength * 1)) // TODO: 1 FAT is currently hardcoded.
+		{
+			fputs("Error: Invalid FAT offset.\n", stderr);
+			return false;
+		}
+
+		// TODO: More checks.
+	}
 
 	return true;
 }
@@ -159,22 +187,53 @@ static bool getFormatParams(const u64 totSec, const ArgFlags flags, FormatParams
 static void printFormatParams(const FormatParams &params)
 {
 	const char *fsName;
-	if(params.fatBits == 12)      fsName = "FAT12";
-	else if(params.fatBits == 16) fsName = "FAT16";
-	else if(params.fatBits == 32) fsName = "FAT32";
-	else                          fsName = "exFAT";
+	const u8 fatBits = params.fatBits;
+	if(fatBits == 12)      fsName = "FAT12";
+	else if(fatBits == 16) fsName = "FAT16";
+	else if(fatBits == 32) fsName = "FAT32";
+	else                   fsName = "exFAT";
 
-	printf("Filesystem type:      %s\n", fsName);
-	printf("Bytes per sector:     %" PRIu16 "\n", params.bytesPerSec);
-	printf("Heads:                %" PRIu8 "\n", params.heads);
-	printf("Sectors per track:    %" PRIu8 "\n", params.secPerTrk);
-	printf("Alignment:            %" PRIu32 "\n", params.alignment);
-	printf("Reserved sectors:     %" PRIu32 "\n", params.rsvdSecCnt);
-	printf("Sectors per cluster:  %" PRIu32 "\n", params.secPerClus);
-	printf("Sectors per FAT:      %" PRIu32 "\n", params.secPerFat);
-	printf("Filesystem area size: %" PRIu32 "\n", params.fsAreaSize);
-	printf("Partition start:      %" PRIu32 "\n", params.partStart);
-	printf("Maximum clusters:     %" PRIu32 "\n", params.maxClus);
+	printf("Filesystem type:      %s\n"
+	       "Bytes per sector:     %" PRIu16 "\n"
+	       "Sectors per cluster:  %" PRIu32 "\n"
+	       "Alignment:            %" PRIu32 "\n",
+	       fsName,
+	       params.bytesPerSec,
+	       params.secPerClus,
+	       params.alignment);
+
+	if(fatBits < 64)
+	{
+		printf("Reserved sectors:     %" PRIu32 "\n"
+		       "Sectors per FAT:      %" PRIu32 "\n"
+		       "Filesystem area size: %" PRIu32 "\n"
+		       "Partition start:      %" PRIu32 "\n"
+		       "Maximum clusters:     %" PRIu32 "\n"
+		       "Heads:                %" PRIu8 "\n"
+		       "Sectors per track:    %" PRIu8 "\n",
+		       params.rsvdSecCnt,
+		       params.secPerFat,
+		       params.fsAreaSize,
+		       params.partStart,
+		       params.maxClus,
+		       params.heads,
+		       params.secPerTrk);
+	}
+	else
+	{
+		printf("Partition offset:     %" PRIu64 "\n"
+		       "Volume length:        %" PRIu64 "\n"
+		       "FAT offset:           %" PRIu32 "\n"
+		       "FAT length:           %" PRIu32 "\n"
+		       "Cluster heap offset:  %" PRIu32 "\n"
+		       "Cluster count:        %" PRIu32 "\n",
+		       params.partitionOffset,
+		       params.volumeLength,
+		       params.fatOffset,
+		       params.fatLength,
+		       params.clusterHeapOffset,
+		       params.clusterCount);
+	}
 }
 
 u32 formatSd(const char *const path, const std::string &label, const ArgFlags flags, const u64 overrTotSec)
@@ -195,6 +254,29 @@ u32 formatSd(const char *const path, const std::string &label, const ArgFlags fl
 		totSec = overrTotSec;
 	printf("SD card contains %" PRIu64 " sectors.\n", totSec);
 
+	// Collect and calculate all the infos needed for formatting.
+	FormatParams params{};
+	if(!getFormatParams(totSec, flags, params))
+	{
+		fputs("The SD card can not be formatted with the given parameters.\n", stderr);
+		return ERR_FORMAT_PARAMS;
+	}
+
+	alignas(char16_t) char convertedLabel[2 * 12];
+	if(label.length() > 0)
+	{
+		if(params.fatBits < 64)
+		{
+			if(convertCheckFatLabel(label.c_str(), convertedLabel) == 0)
+				return ERR_INVALID_ARG;
+		}
+		else
+		{
+			if(convertCheckExfatLabel(label.c_str(), reinterpret_cast<char16_t*>(convertedLabel)) == 0)
+				return ERR_INVALID_ARG;
+		}
+	}
+
 	if(flags.erase || flags.secErase)
 	{
 		verbosePuts("Erasing SD card...");
@@ -209,29 +291,21 @@ u32 formatSd(const char *const path, const std::string &label, const ArgFlags fl
 		else if(eraseRes != 0) return ERR_ERASE;
 	}
 
-	// Collect and calculate all the infos needed for formatting.
-	FormatParams params{};
-	if(!getFormatParams(totSec, flags, params))
-	{
-		fputs("The SD card can not be formatted with the given parameters.\n", stderr);
-		return ERR_FORMAT_PARAMS;
-	}
-
 	// Create a new Master Boot Record and partition.
 	verbosePuts("Creating new partition table and partition...");
 	if(createMbrAndPartition(params, dev) != 0) return ERR_PARTITION;
 
 	// Clear filesystem areas and write a new Volume Boot Record.
-	// TODO: Label should be upper case and some chars are not allowed. Implement conversion + checks.
-	//       mkfs.fat allows lower case but warns about it.
 	verbosePuts("Formatting the partition...");
 	if(params.fatBits <= 32)
 	{
-		if(makeFsFat(params, dev, label) != 0) return ERR_FORMAT;
+		if(makeFsFat(params, dev, convertedLabel) != 0)
+			return ERR_FORMAT;
 	}
 	else
 	{
-		// TODO: exFAT.
+		if(makeFsExFat(params, dev, reinterpret_cast<char16_t*>(convertedLabel)) != 0)
+			return ERR_FORMAT;
 	}
 
 	// Explicitly close dev to get the result.

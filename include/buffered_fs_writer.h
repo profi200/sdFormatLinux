@@ -14,7 +14,7 @@
 //          Padding for alignment is filled with zeros (no read-modify-write).
 class BufferedFsWriter final : private BlockDev
 {
-	static constexpr u32 m_blkSize = 1024 * 1024 * 4; // Must be >=512 and power of 2.
+	static constexpr u32 m_blkSize = 1024 * 1024 * 8; // Must be >=512 and power of 2.
 	static constexpr u32 m_blkMask = m_blkSize - 1;
 	static_assert(m_blkSize > 512 && (m_blkSize & m_blkMask) == 0, "Invalid buffer size for BufferedFsWriter.");
 

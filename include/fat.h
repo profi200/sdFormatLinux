@@ -8,7 +8,7 @@
 #include "buffered_fs_writer.h"
 
 // References:
-// FAT12/16/32: http://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc
+// http://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc
 
 
 // Boot sector.
@@ -94,8 +94,8 @@ typedef struct
 	u16 wrtDate;     // Last (modification) write date.
 	u16 fstClusLo;   // Low u16 of first data cluster.
 	u32 fileSize;    // File/directory size in bytes.
-} FatDir;
-static_assert(offsetof(FatDir, fileSize) == 28, "Member fileSize of FatDir not at offset 28.");
+} FatDirEnt;
+static_assert(offsetof(FatDirEnt, fileSize) == 28, "Member fileSize of FatDirEnt not at offset 28.");
 
 typedef struct __attribute__((packed))
 {
@@ -107,8 +107,8 @@ typedef struct __attribute__((packed))
 	u16 name2[6];  // UTF-16 character 6-11 of long name.
 	u16 fstClusLo; // Must be 0.
 	u16 name3[2];  // UTF-16 character 12-13 of long name.
-} FatLdir;
-static_assert(offsetof(FatLdir, name3) == 28, "Member name3 of FatLdir not at offset 28.");
+} FatLdirEnt;
+static_assert(offsetof(FatLdirEnt, name3) == 28, "Member name3 of FatLdirEnt not at offset 28.");
 
 
 // Boot sector.
@@ -148,7 +148,7 @@ static_assert(offsetof(FatLdir, name3) == 28, "Member name3 of FatLdir not at of
 #define FAT_FIRST_ENT             (2u)          // Index 0 and 1 are reserved.
 #define FAT12_MAX_CLUS            (0xFF4u)      // Specification limit.
 #define FAT16_MAX_CLUS            (0xFFF4u)     // Specification limit.
-#define FAT32_MAX_CLUS            (0x0FFFFFF6u) // Theoretical limit. 2 clusters will not be allocatable. Spec limit is 0x0FFFFFF4?
+#define FAT32_MAX_CLUS            (0x0FFFFFF6u) // Theoretical limit. 2 clusters will not be allocatable. Spec limit is 0x0FFFFFF5?
 
 #define FAT_FREE                  (0u)          // FAT entry is unallocated/free. Common for all 3 variants.
 // 0xXXXXXFF6 is reserved.
@@ -178,6 +178,7 @@ static inline u8 calcLdirChksum(const char *shortName)
 	return chksum;
 }
 
+u32 makeVolId(void);
 void calcFormatFat(FormatParams &params);
 void calcFormatFat32(FormatParams &params);
 int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::string &label);

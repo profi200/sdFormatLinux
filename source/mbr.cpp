@@ -30,7 +30,6 @@ static u32 lba2chs(u64 lba, const u32 heads, const u32 secPerTrk)
 	return (c & 0xFFu)<<16 | (c & 0x300u)<<6 | s<<8 | h;
 }
 
-// TODO: Rewrite this function to use partSize to determine the fs type.
 int createMbrAndPartition(const FormatParams &params, BufferedFsWriter &dev)
 {
 	// Master Boot Record (MBR).
@@ -45,15 +44,15 @@ int createMbrAndPartition(const FormatParams &params, BufferedFsWriter &dev)
 	entry.status = 0x00;
 
 	// Set start C/H/S.
+	const u8  fatBits     = params.fatBits;
 	const u32 bytesPerSec = params.bytesPerSec;
-	const u32 partStart   = params.partStart * (bytesPerSec>>9); // Convert back to physical sectors.
+	const u32 partStart   = LOG2PHY(fatBits < 64 ? params.partStart : params.partitionOffset, bytesPerSec);
 	const u32 heads       = params.heads;
 	const u32 secPerTrk   = params.secPerTrk;
 	const u32 startCHS    = lba2chs(partStart, heads, secPerTrk);
 	memcpy(entry.startCHS, &startCHS, 3);
 
 	// Set partition filesystem type.
-	const u8 fatBits   = params.fatBits;
 	const u64 totSec   = params.totSec * (bytesPerSec>>9); // Convert back to physical sectors.
 	const u64 partSize = totSec - partStart; // TODO: Is this correct or should we align the end?
 	u8 type;

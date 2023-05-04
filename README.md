@@ -1,5 +1,5 @@
 # sdFormatLinux
-Unfortunately SDFormatter isn't available for Linux so i made this. It is a tool to format your SD card the way the SD Association intended but under Linux.
+Unfortunately SDFormatter [was](https://www.sdcard.org/downloads/sd-memory-card-formatter-for-linux) not available for Linux so i made this. It is a tool to format your SD card the way the SD Association intended but under Linux. It offers a few features the official tool does not like FAT32 for SDXC cards.
 
 Multiple SD cards with different capacities have been tested and this tool formats them 1:1 the same as SDFormatter with the following exceptions:
 * SDFormatter does not set the jmp instruction offset in the boot sector for FAT12/16/32. sdFormatLinux does.

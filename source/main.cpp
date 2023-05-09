@@ -15,7 +15,7 @@
 
 static void printHelp(void)
 {
-	puts("sdFormatLinux 0.1.0 by profi200\n"
+	puts("sdFormatLinux 0.2.0 by profi200\n"
 	     "Usage: sdFormatLinux [OPTIONS...] DEVICE\n\n"
 	     "Options:\n"
 	     "  -l, --label LABEL        Volume label. Maximum 11 uppercase characters.\n"

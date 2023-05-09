@@ -1,6 +1,7 @@
 #pragma once
 
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #include "types.h"
 
@@ -61,7 +62,7 @@ public:
 	 *
 	 * @return     Returns 0 on success or errno.
 	 */
-	int read(u8 *buf, const u64 sector, const u64 count) const noexcept;
+	int read(void *buf, const u64 sector, const u64 count) const noexcept;
 
 	/**
 	 * @brief      Writes sectors to the block device.
@@ -72,7 +73,7 @@ public:
 	 *
 	 * @return     Returns 0 on success or errno.
 	 */
-	int write(const u8 *buf, const u64 sector, const u64 count) noexcept;
+	int write(const void *buf, const u64 sector, const u64 count) noexcept;
 
 	/**
 	 * @brief      Perform a TRIM/erase on the whole block device.

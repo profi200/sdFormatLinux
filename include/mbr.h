@@ -1,6 +1,7 @@
 #pragma once
 
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #include <cstddef>
 #include "types.h"
@@ -10,7 +11,7 @@
 
 typedef struct
 {
-	u8 status; // 0x80 active/bootable, 0x00 inactive.
+	u8 status;      // 0x80 active/bootable, 0x00 inactive.
 	u8 startCHS[3];
 	u8 type;
 	u8 endCHS[3];
@@ -23,7 +24,7 @@ typedef struct
 {
 	u8 bootstrap[440];
 	u32 diskSig;
-	u16 reserved; // 0x0000. 0x5A5A for copy protected.
+	u16 reserved;           // 0x0000. 0x5A5A for copy protected.
 	PartEntry partTable[4];
 	u16 bootSig;
 } __attribute__((packed)) Mbr;

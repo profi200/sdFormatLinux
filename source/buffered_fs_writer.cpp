@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 //#include <cstdio>
+#include <cstring>
 #include "buffered_fs_writer.h"
 
 
@@ -53,7 +55,7 @@ int BufferedFsWriter::fill(const u64 offset) noexcept
 }
 
 // TODO: Edge case testing.
-int BufferedFsWriter::write(const u8 *buf, const u64 size) noexcept
+int BufferedFsWriter::write(const void *buf, const u64 size) noexcept
 {
 //printf("BufferedFsWriter::write(%p, %lu) m_pos %lu\n", buf, size, m_pos);
 	u64 pos = m_pos;
@@ -62,32 +64,33 @@ int BufferedFsWriter::write(const u8 *buf, const u64 size) noexcept
 	if(end < size) return EINVAL;
 
 	// Align to buffer size.
+	const u8 *_buf = reinterpret_cast<const u8*>(buf);
 	const u32 misalignment = ((pos + m_blkMask) & ~((u64)m_blkMask)) - pos;
 	if(misalignment > 0)
 	{
 		const u32 copySize = size < misalignment ? size : misalignment;
-		memcpy(&m_buf[pos & m_blkMask], buf, copySize);
+		memcpy(&m_buf[pos & m_blkMask], _buf, copySize);
 		if(copySize == misalignment)
 		{
 			const int res = BlockDev::write(m_buf.get(), (pos & ~((u64)m_blkMask)) / 512, m_blkSize / 512);
 			if(res != 0) return res;
 		}
-		buf += copySize;
+		_buf += copySize;
 		pos += copySize;
 	}
 
 	// Write full blocks.
 	while(pos < (end & ~((u64)m_blkMask))) // TODO: Use this same calculation in seekAndFill()?
 	{
-		const int res = BlockDev::write(buf, pos / 512, m_blkSize / 512);
+		const int res = BlockDev::write(_buf, pos / 512, m_blkSize / 512);
 		if(res != 0) return res;
 
-		buf += m_blkSize;
+		_buf += m_blkSize;
 		pos += m_blkSize;
 	}
 
 	// Remaining bytes.
-	memcpy(m_buf.get(), buf, end - pos);
+	memcpy(m_buf.get(), _buf, end - pos);
 
 	m_pos = end;
 

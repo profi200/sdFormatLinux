@@ -1,6 +1,7 @@
 #pragma once
 
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #include <cstddef>
 #include "types.h"
@@ -14,17 +15,17 @@
 // Boot sector.
 typedef struct __attribute__((packed))
 {
-	u8 jmpBoot[3];   // {0xEB, 0xXX, 0x90} or {0xE9, 0xXX, 0xXX}.
+	u8  jmpBoot[3];  // {0xEB, 0xXX, 0x90} or {0xE9, 0xXX, 0xXX}.
 	char oemName[8]; // Usually system name that formatted the volume.
 
 	// BIOS Parameter Block.
 	u16 bytesPerSec; // 512, 1024, 2048 or 4096. Usually 512.
-	u8 secPerClus;   // 1, 2, 4, 8, 16, 32, 64 or 128.
+	u8  secPerClus;  // 1, 2, 4, 8, 16, 32, 64 or 128.
 	u16 rsvdSecCnt;  // Must not be 0.
-	u8 numFats;      // Should be 2. 1 is also allowed.
+	u8  numFats;     // Should be 2. 1 is also allowed.
 	u16 rootEntCnt;  // 0 for FAT32.
 	u16 totSec16;    // Must be zero for FAT32.
-	u8 media;        // 0xF0, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE or 0xFF. Usually 0xF8.
+	u8  media;       // 0xF0, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE or 0xFF. Usually 0xF8.
 	u16 fatSz16;     // Must be zero for FAT32.
 	u16 secPerTrk;
 	u16 numHeads;
@@ -36,13 +37,13 @@ typedef struct __attribute__((packed))
 	{
 		struct __attribute__((packed)) // FAT12/FAT16.
 		{
-			u8 drvNum;          // 0x80 or 0x00.
-			u8 reserved1;       // Must be 0. Used by Windows for dirty flag (bit 0 set = dirty).
-			u8 bootSig;         // 0x29 if one or both of the following 2 fields are non-zero.
+			u8  drvNum;         // 0x80 or 0x00.
+			u8  reserved1;      // Must be 0. Used by Windows for dirty flag (bit 0 set = dirty).
+			u8  bootSig;        // 0x29 if one or both of the following 2 fields are non-zero.
 			u32 volId;          // Volume serial number generated from date and time.
 			char volLab[11];    // "NO NAME    " or space padded label.
 			char filSysType[8]; // "FAT12   ", "FAT16   " or "FAT     ".
-			u8 bootCode[448];
+			u8  bootCode[448];
 		} ebpb;
 		struct __attribute__((packed)) // FAT32.
 		{
@@ -52,14 +53,14 @@ typedef struct __attribute__((packed))
 			u32 rootClus;       // Should be 2 or the first non-defective cluster.
 			u16 fsInfoSector;   // Usually 1.
 			u16 bkBootSec;      // 0 or 6. Backup boot sector must be present if the later.
-			u8 reserved[12];    // Must be 0.
-			u8 drvNum;          // 0x80 or 0x00.
-			u8 reserved1;       // Must be 0. Used by Windows for dirty flag (bit 0 set = dirty).
-			u8 bootSig;         // 0x29 if one or both of the following 2 fields are non-zero.
+			u8  reserved[12];   // Must be 0.
+			u8  drvNum;         // 0x80 or 0x00.
+			u8  reserved1;      // Must be 0. Used by Windows for dirty flag (bit 0 set = dirty).
+			u8  bootSig;        // 0x29 if one or both of the following 2 fields are non-zero.
 			u32 volId;          // Volume serial number generated from date and time.
 			char volLab[11];    // "NO NAME    " or space padded label.
 			char filSysType[8]; // "FAT32   ".
-			u8 bootCode[420];
+			u8  bootCode[420];
 		} ebpb32;
 	};
 	u16 sigWord; // 0xAA55.
@@ -70,43 +71,43 @@ static_assert(offsetof(BootSec, sigWord) == 510, "Member sigWord of BootSec not 
 
 typedef struct
 {
-	u32 leadSig;       // Must be 0x41615252.
-	u8 reserved1[480]; // Must be 0.
-	u32 strucSig;      // Must be 0x61417272.
-	u32 freeCount;     // Number of free clusters or 0xFFFFFFFF if unknown.
-	u32 nxtFree;       // First free cluster number or 0xFFFFFFFF if unknown.
-	u8 reserved2[12];  // Must be 0.
-	u32 trailSig;      // Must be 0xAA550000.
+	u32 leadSig;        // Must be 0x41615252.
+	u8  reserved1[480]; // Must be 0.
+	u32 strucSig;       // Must be 0x61417272.
+	u32 freeCount;      // Number of free clusters or 0xFFFFFFFF if unknown.
+	u32 nxtFree;        // First free cluster number or 0xFFFFFFFF if unknown.
+	u8  reserved2[12];  // Must be 0.
+	u32 trailSig;       // Must be 0xAA550000.
 } FsInfo;
 static_assert(offsetof(FsInfo, trailSig) == 508, "Member trailSig of FsInfo not at offset 508.");
 
 typedef struct
 {
-	char name[11];   // Short file name in 8:3 format. Maximum 11 characters.
-	u8 attr;         // Attribute bitmask. ATTR_READ_ONLY 0x01, ATTR_HIDDEN 0x02, ATTR_SYSTEM 0x04, ATTR_VOLUME_ID 0x08, ATTR_DIRECTORY 0x10, ATTR_ARCHIVE 0x20.
-	u8 ntRes;        // Must be 0.
-	u8 crtTimeTenth; // Creation time tenths of a second.
-	u16 crtTime;     // Creation time in 2 second units.
-	u16 crtDate;     // Creation date.
-	u16 lstAccDate;  // Last access date. Updated on write.
-	u16 fstClusHi;   // High u16 of first data cluster. Must be 0 for FAT12/16.
-	u16 wrtTime;     // Last (modification) write time.
-	u16 wrtDate;     // Last (modification) write date.
-	u16 fstClusLo;   // Low u16 of first data cluster.
-	u32 fileSize;    // File/directory size in bytes.
+	char name[11];    // Short file name in 8:3 format. Maximum 11 characters.
+	u8  attr;         // Attribute bitmask. ATTR_READ_ONLY 0x01, ATTR_HIDDEN 0x02, ATTR_SYSTEM 0x04, ATTR_VOLUME_ID 0x08, ATTR_DIRECTORY 0x10, ATTR_ARCHIVE 0x20.
+	u8  ntRes;        // Must be 0.
+	u8  crtTimeTenth; // Creation time tenths of a second.
+	u16 crtTime;      // Creation time in 2 second units.
+	u16 crtDate;      // Creation date.
+	u16 lstAccDate;   // Last access date. Updated on write.
+	u16 fstClusHi;    // High u16 of first data cluster. Must be 0 for FAT12/16.
+	u16 wrtTime;      // Last (modification) write time.
+	u16 wrtDate;      // Last (modification) write date.
+	u16 fstClusLo;    // Low u16 of first data cluster.
+	u32 fileSize;     // File/directory size in bytes.
 } FatDirEnt;
 static_assert(offsetof(FatDirEnt, fileSize) == 28, "Member fileSize of FatDirEnt not at offset 28.");
 
 typedef struct __attribute__((packed))
 {
-	u8 ord;        // Order of LDIR entries. Last entry (which comes first) must have LAST_LONG_ENTRY (0x40) set.
-	u16 name1[5];  // UTF-16 character 1-5 of long name.
-	u8 attr;       // Must be ATTR_LONG_NAME (DIR_ATTR_VOLUME_ID | DIR_ATTR_SYSTEM | DIR_ATTR_HIDDEN | DIR_ATTR_READ_ONLY).
-	u8 type;       // Must be 0 (sub-component of long name). Other values unknown (extensions).
-	u8 chksum;     // Checksum of 11 characters short name.
-	u16 name2[6];  // UTF-16 character 6-11 of long name.
-	u16 fstClusLo; // Must be 0.
-	u16 name3[2];  // UTF-16 character 12-13 of long name.
+	u8  ord;           // Order of LDIR entries. Last entry (which comes first) must have LAST_LONG_ENTRY (0x40) set.
+	char16_t name1[5]; // UTF-16 character 1-5 of long name.
+	u8  attr;          // Must be ATTR_LONG_NAME (DIR_ATTR_VOLUME_ID | DIR_ATTR_SYSTEM | DIR_ATTR_HIDDEN | DIR_ATTR_READ_ONLY).
+	u8  type;          // Must be 0 (sub-component of long name). Other values unknown (extensions).
+	u8  chksum;        // Checksum of 11 characters short name.
+	char16_t name2[6]; // UTF-16 character 6-11 of long name.
+	u16 fstClusLo;     // Must be 0.
+	char16_t name3[2]; // UTF-16 character 12-13 of long name.
 } FatLdirEnt;
 static_assert(offsetof(FatLdirEnt, name3) == 28, "Member name3 of FatLdirEnt not at offset 28.");
 

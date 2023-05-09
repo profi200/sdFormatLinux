@@ -1,8 +1,8 @@
 #pragma once
 
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
-#include <cstring>
 #include <memory>
 #include <stdexcept>
 #include "types.h"
@@ -84,7 +84,7 @@ public:
 	 *
 	 * @return     Returns 0 on success or errno.
 	 */
-	int write(const u8 *buf, const u64 size) noexcept;
+	int write(const void *buf, const u64 size) noexcept;
 
 	/**
 	 * @brief      Fills until offset and writes size bytes from buf.
@@ -95,7 +95,7 @@ public:
 	 *
 	 * @return     Returns 0 on success or errno.
 	 */
-	int fillAndWrite(const u8 *buf, const u64 offset, const u64 size) noexcept
+	int fillAndWrite(const void *buf, const u64 offset, const u64 size) noexcept
 	{
 		int res = fill(offset);
 		if(res == 0) res = write(buf, size);
@@ -111,7 +111,6 @@ public:
 	 */
 	int eraseAll(const bool secure = false) noexcept
 	{
-		//memset(m_buf.get(), 0, m_pos & m_blkMask);
 		m_pos = 0;
 		return BlockDev::eraseAll(secure);
 	}

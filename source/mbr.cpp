@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #include <cstdio>
 #include <cstring>
@@ -83,5 +84,5 @@ int createMbrAndPartition(const FormatParams &params, BufferedFsWriter &dev)
 	mbr.bootSig = 0xAA55;
 
 	// Write new MBR to card.
-	return dev.write(reinterpret_cast<u8*>(&mbr), sizeof(Mbr));
+	return dev.write(&mbr, sizeof(Mbr));
 }

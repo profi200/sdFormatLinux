@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #include <memory>
 #include <cstdio>
@@ -262,17 +263,17 @@ u32 formatSd(const char *const path, const std::string &label, const ArgFlags fl
 		return ERR_FORMAT_PARAMS;
 	}
 
-	alignas(char16_t) char convertedLabel[2 * 12];
+	char16_t convertedLabel[12]{};
 	if(label.length() > 0)
 	{
 		if(params.fatBits < 64)
 		{
-			if(convertCheckFatLabel(label.c_str(), convertedLabel) == 0)
+			if(convertCheckFatLabel(label.c_str(), reinterpret_cast<char*>(convertedLabel)) == 0)
 				return ERR_INVALID_ARG;
 		}
 		else
 		{
-			if(convertCheckExfatLabel(label.c_str(), reinterpret_cast<char16_t*>(convertedLabel)) == 0)
+			if(convertCheckExfatLabel(label.c_str(), convertedLabel) == 0)
 				return ERR_INVALID_ARG;
 		}
 	}
@@ -299,12 +300,12 @@ u32 formatSd(const char *const path, const std::string &label, const ArgFlags fl
 	verbosePuts("Formatting the partition...");
 	if(params.fatBits <= 32)
 	{
-		if(makeFsFat(params, dev, convertedLabel) != 0)
+		if(makeFsFat(params, dev, reinterpret_cast<char*>(convertedLabel)) != 0)
 			return ERR_FORMAT;
 	}
 	else
 	{
-		if(makeFsExFat(params, dev, reinterpret_cast<char16_t*>(convertedLabel)) != 0)
+		if(makeFsExFat(params, dev, convertedLabel) != 0)
 			return ERR_FORMAT;
 	}
 

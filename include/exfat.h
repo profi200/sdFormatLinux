@@ -53,7 +53,7 @@ typedef struct
 } FlashParameters;
 static_assert(offsetof(FlashParameters, reserved) == 44, "Member reserved of FlashParameters not at offsetof 44.");
 
-typedef struct
+typedef struct alignas(u64) // ARM GCC generates terrible code without alignas(u64).
 {
 	u8 entryType;
 	union
@@ -76,10 +76,50 @@ typedef struct
 		struct __attribute__((packed))
 		{
 			u8  characterCount;
-			u16 volumeLabel[11];
+			char16_t volumeLabel[11];
 			u8  reserved[8];
 		} label;
-		// TODO: Other entry types.
+		struct __attribute__((packed))
+		{
+			u8  secondaryCount;
+			u16 setChecksum;
+			u16 fileAttributes;
+			u8  reserved1[2];
+			u32 createTimestamp;
+			u32 lastModifiedTimestamp;
+			u32 lastAccessedTimestamp;
+			u8  create10msIncrement;
+			u8  lastModified10msIncrement;
+			u8  createUtcOffset;
+			u8  lastModifiedUtcOffset;
+			u8  lastAccessedUtcOffset;
+			u8  reserved2[7];
+		} file; // And directory.
+		struct __attribute__((packed))
+		{
+			u8  secondaryCount;
+			u16 setChecksum;
+			u16 generalPrimaryFlags;
+			u8  volumeGuid[16];
+			u8  reserved[10];
+		} guid;
+		struct __attribute__((packed))
+		{
+			u8  generalSecondaryFlags;
+			u8  reserved1;
+			u8  nameLength;
+			u16 nameHash;
+			u8  reserved2[2];
+			u64 validDataLength;
+			u8  reserved3[4];
+			u32 firstCluster;
+			u64 dataLength;
+		} stream;
+		struct __attribute__((packed))
+		{
+			u8  generalSecondaryFlags;
+			char16_t fileName[15];
+		} name;
 	};
 } ExfatDirEnt;
 static_assert(sizeof(ExfatDirEnt) == 32, "ExfatDirEnt is not 32 bytes.");

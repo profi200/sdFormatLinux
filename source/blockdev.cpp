@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #define _FILE_OFFSET_BITS 64
 #include <cstdio>
@@ -14,30 +15,14 @@
 
 
 //#define REDIRECT_FOR_DEBUG (1)
-#define MAX_TOKENS         (4)
 
 
-
-// Assumes at least 1 token.
-static u32 tokenize(char *const line, const char *tokens[MAX_TOKENS])
-{
-	memset(tokens, 0, sizeof(char*) * MAX_TOKENS);
-	tokens[0] = strtok(line, " ,\t\n");
-	u32 num = 1;
-	for(u32 i = 1; i < MAX_TOKENS; i++)
-	{
-		if((tokens[i] = strtok(nullptr, " ,\t\n")) == nullptr) break;
-		num++;
-	}
-
-	return num;
-}
 
 static int checkDevice(const char *const path)
 {
 	int res = EINVAL; // By default assume the given path is not a suitable device.
-	char cmd[64] = "lsblk -nr -oTYPE,HOTPLUG,PHY-SEC,MOUNTPOINT ";
-	strncpy(&cmd[44], path, sizeof(cmd) - 44);
+	char cmd[64] = "/usr/bin/lsblk -dnr -oTYPE,HOTPLUG,PHY-SEC ";
+	strncpy(&cmd[43], path, sizeof(cmd) - 43);
 	cmd[sizeof(cmd) - 1] = '\0';
 	FILE *const p = ::popen(cmd, "r");
 	if(p == nullptr)
@@ -47,27 +32,16 @@ static int checkDevice(const char *const path)
 		return res;
 	}
 
-	char line[64];
+	char line[16];
 	line[sizeof(line) - 1] = '\0';
-	while(fgets(line, sizeof(line), p) != nullptr) // TODO: We should probably check for errors with ferror().
+	if(fgets(line, sizeof(line), p) == nullptr)
 	{
-		const char *tokens[MAX_TOKENS];
-		tokenize(line, tokens);
-
-		// Check for disk, hotplug and sector size or alternatively for a loop device.
-		// This assumes that lsblk never outputs disk or loop entries
-		// when given the path to a partition or file.
-		if((strcmp(tokens[0], "disk") == 0 && *tokens[1] == '1' && strcmp(tokens[2], "512") == 0) ||
-		   strcmp(tokens[0], "loop") == 0)
-			res = 0;
-
-		// If any of the partitions is mounted stop here.
-		if(tokens[3] != nullptr)
-		{
-			res = EACCES;
-			break;
-		}
+		::pclose(p);
+		return res;
 	}
+
+	if(strcmp(line, "disk 1 512\n") == 0 || strcmp(line, "loop 0 512\n") == 0)
+		res = 0;
 
 	const int pres = ::pclose(p);
 	if(pres == -1)     res = errno;  // pclose() error.
@@ -84,9 +58,9 @@ int BlockDev::open(const char *const path, const bool rw) noexcept
 	{
 		res = checkDevice(path);
 		errno = res; // For perror() at the end.
-		if(res == EACCES)
+		if(res == EINVAL)
 		{
-			fputs("Device is a file or partitions are mounted.\n", stderr);
+			fputs("Error: Not a suitable block device.\n", stderr);
 			break;
 		}
 		else if(res != 0)
@@ -94,10 +68,15 @@ int BlockDev::open(const char *const path, const bool rw) noexcept
 
 		// Note: There is no reliable way of locking block device files so we don't and hope nothing explodes.
 		//       flock() only works between processes using it.
-		fd = ::open(path, (rw ? O_RDWR : O_RDONLY));
+		// Under Linux opening a mounted block device with O_EXCL will fail with EBUSY.
+		fd = ::open(path, (rw ? O_RDWR : O_RDONLY) | O_EXCL);
 		if(fd == -1)
 		{
 			res = errno;
+			if(res == EBUSY)
+			{
+				fputs("Error: Device is mounted.\n", stderr);
+			}
 			break;
 		}
 
@@ -112,7 +91,7 @@ int BlockDev::open(const char *const path, const bool rw) noexcept
 		while(::close(fd) == -1 && errno == EINTR);
 
 		// Create file with -rw-rw-rw- permissions.
-		fd = ::open("sdFormatLinux_dump.bin", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+		fd = ::open("./sdFormatLinux_dump.bin", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 		if(fd == -1)
 		{
 			res = errno;
@@ -132,24 +111,25 @@ int BlockDev::open(const char *const path, const bool rw) noexcept
 	return res;
 }
 
-int BlockDev::read(u8 *buf, const u64 sector, const u64 count) const noexcept
+int BlockDev::read(void *buf, const u64 sector, const u64 count) const noexcept
 {
 	int res = 0;
 	const int fd = m_fd;
 	off_t offset = sector * m_sectorSize;
 	u64 totSize = count * m_sectorSize;
+	u8 *_buf = reinterpret_cast<u8*>(buf);
 	while(totSize > 0)
 	{
 		// Limit of 1 GiB chunks.
 		const size_t blkSize = (totSize > 0x40000000 ? 0x40000000 : totSize);
-		const ssize_t _read = ::pread(fd, buf, blkSize, offset);
+		const ssize_t _read = ::pread(fd, _buf, blkSize, offset);
 		if(_read == -1)
 		{
 			res = errno;
 			break;
 		}
 
-		buf += _read;
+		_buf += _read;
 		offset += _read;
 		totSize -= _read;
 	}
@@ -158,40 +138,39 @@ int BlockDev::read(u8 *buf, const u64 sector, const u64 count) const noexcept
 	return res;
 }
 
-int BlockDev::write(const u8 *buf, const u64 sector, const u64 count) noexcept
+int BlockDev::write(const void *buf, const u64 sector, const u64 count) noexcept
 {
 #ifdef REDIRECT_FOR_DEBUG
 	// Limit to 1 GiB in case we screw up in debug mode.
 	if(sector > ~count || sector + count > 0x40000000) return EINVAL;
 #endif
 
-	// Mark as dirty since we are about to change data.
+	// Mark as dirty since we are about to write data.
 	m_dirty = true;
 
 	int res = 0;
 	const int fd = m_fd;
 	off_t offset = sector * m_sectorSize;
 	u64 totSize = count * m_sectorSize;
+	const u8 *_buf = reinterpret_cast<const u8*>(buf);
 	while(totSize > 0)
 	{
 		// Limit of 1 GiB chunks.
 		const size_t blkSize = (totSize > 0x40000000 ? 0x40000000 : totSize);
-		const ssize_t written = ::pwrite(fd, buf, blkSize, offset);
+		const ssize_t written = ::pwrite(fd, _buf, blkSize, offset);
 		if(written == -1)
 		{
 			res = errno;
 			break;
 		}
 
-		buf += written;
+		_buf += written;
 		offset += written;
 		totSize -= written;
 	}
 
 	if(res != 0) perror("Failed to write to block device");
 	return res;
-
-	return 0;
 }
 
 int BlockDev::eraseAll(const bool secure) const noexcept

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #define _FILE_OFFSET_BITS 64
 #include <cstdio>
+#include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
 #include "../../include/mbr.h"
@@ -31,7 +33,7 @@ static int openFile(const char *const path)
 static int readSectors(void *buf, const u64 sector, const u64 count)
 {
 	int res = 0;
-	u8 *_buf = (u8*)buf;
+	u8 *_buf = reinterpret_cast<u8*>(buf);
 	off_t offset = sector * 512;
 	u64 totSize = count * 512;
 	while(totSize > 0)

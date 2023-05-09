@@ -3,7 +3,7 @@ Unfortunately SDFormatter [was](https://www.sdcard.org/downloads/sd-memory-card-
 
 Multiple SD cards with different capacities have been tested and this tool formats them 1:1 the same as SDFormatter with the following exceptions:
 * SDFormatter does not set the jmp instruction offset in the boot sector for FAT12/16/32. sdFormatLinux does.
-* For exFAT sdFormatLinux clears unused FAT entries SDFormatter leaves untouched and SDFormatter clears more areas after root directory cluster. As far as i can tell these differences don't matter.
+* For exFAT sdFormatLinux clears the area between last FAT entry and cluster heap but SDFormatter doesn't. As far as i can tell this difference doesn't matter.
 * sdFormatLinux currently does not preserve OEM flash parameters when reformatting in exFAT. It will recalculate the correct values instead.
 
 ## Examples
@@ -12,6 +12,14 @@ Erase (TRIM) and format SD card (recommended). TRIM will not work with USB card 
 
 Erase and format with label.  
 `sudo sdFormatLinux -l 'MY LABEL' -e trim /dev/mmcblkX`
+
+Erase and format a SDXC card to FAT32 (64 KiB clusters).  
+`sudo sdFormatLinux -e trim -f /dev/mmcblkX`
+
+## FAQ
+**Q: Why should i format my SDXC card with this tool to FAT32 instead of using guiformat/other tools?**\
+A: Because most of these tools are not designed for flash based media and will format them incorrectly causing lower lifespan and performance.  
+There is a common myth that you should only use 32 KB (actually KiB) clusters which is false. sdFormatLinux will use 64 KiB clusters when formatting SDXC cards to FAT32 and it works in every device compliant to Microsoft's FAT specification.
 
 ## Compiling
 Just run `make`. It automatically builds a hardened version.

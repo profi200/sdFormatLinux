@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #include <cmath>
 #include <cstdio>
@@ -21,13 +22,13 @@ void calcFormatFat(FormatParams &params)
 	constexpr u32 bytesPerSec = 512; // Can be hardcoded (no big logical sector support for FAT12/16).
 	constexpr u32 rootEntCnt  = 512;
 	constexpr u32 rsvdSecCnt  = 1;
-	u32 secPerFat             = util::divCeil(totSec / secPerClus * fatBits, bytesPerSec * 8);
+	u32 secPerFat             = util::udivCeil(totSec / secPerClus * fatBits, bytesPerSec * 8);
 	u32 fsAreaSize;
 	u32 partStart;
 	u32 maxClus;
 	while(1)
 	{
-		fsAreaSize = rsvdSecCnt + 2 * secPerFat + util::divCeil(32 * rootEntCnt, bytesPerSec);
+		fsAreaSize = rsvdSecCnt + 2 * secPerFat + util::udivCeil(32 * rootEntCnt, bytesPerSec);
 		partStart  = alignment - fsAreaSize % alignment;
 		if(partStart != alignment) partStart += alignment;
 
@@ -35,7 +36,7 @@ void calcFormatFat(FormatParams &params)
 		while(1)
 		{
 			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
-			tmpSecPerFat = util::divCeil((2 + maxClus) * fatBits, bytesPerSec * 8);
+			tmpSecPerFat = util::udivCeil((2 + maxClus) * fatBits, bytesPerSec * 8);
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -61,7 +62,7 @@ void calcFormatFat32(FormatParams &params)
 	const u32 bytesPerSec = params.bytesPerSec;
 	const u32 alignment   = params.alignment;
 	const u32 secPerClus  = params.secPerClus;
-	u32 secPerFat         = util::divCeil(totSec / secPerClus * fatBits, bytesPerSec * 8);
+	u32 secPerFat         = util::udivCeil(totSec / secPerClus * fatBits, bytesPerSec * 8);
 	const u32 partStart   = alignment;
 	u32 rsvdSecCnt;
 	u32 fsAreaSize;
@@ -75,7 +76,7 @@ void calcFormatFat32(FormatParams &params)
 		while(1)
 		{
 			maxClus      = (totSec - partStart - fsAreaSize) / secPerClus;
-			tmpSecPerFat = util::divCeil((2 + maxClus) * fatBits, bytesPerSec * 8);
+			tmpSecPerFat = util::udivCeil((2 + maxClus) * fatBits, bytesPerSec * 8);
 
 			if(tmpSecPerFat <= secPerFat) break;
 
@@ -169,7 +170,7 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		memset(bs.ebpb.bootCode, 0xF4, sizeof(bs.ebpb.bootCode)); // Fill with x86 hlt instructions.
 
 		// Write boot sector.
-		res = dev.write(reinterpret_cast<u8*>(&bs), sizeof(BootSec));
+		res = dev.write(&bs, sizeof(BootSec));
 		if(res != 0) return res;
 	}
 	else
@@ -189,7 +190,7 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		memset(bs.ebpb32.bootCode, 0xF4, sizeof(bs.ebpb32.bootCode)); // Fill with x86 hlt instructions.
 
 		// Write boot sector.
-		res = dev.write(reinterpret_cast<u8*>(&bs), sizeof(BootSec));
+		res = dev.write(&bs, sizeof(BootSec));
 		if(res != 0) return res;
 
 		// There are apparently drivers based on wrong documentation stating the
@@ -199,7 +200,7 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		if(bytesPerSec > 512)
 		{
 			tmpOffset = curOffset + bytesPerSec - 2;
-			res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
+			res = dev.fillAndWrite(&bs.sigWord, tmpOffset, 2);
 			if(res != 0) return res;
 		}
 
@@ -210,35 +211,35 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		fsInfo.freeCount = params.maxClus - 1; // One cluster is reserved for root directory.
 		fsInfo.nxtFree   = 3;
 		fsInfo.trailSig  = FS_INFO_TRAIL_SIG;
-		res = dev.write(reinterpret_cast<u8*>(&fsInfo), sizeof(FsInfo));
+		res = dev.write(&fsInfo, sizeof(FsInfo));
 		if(res != 0) return res;
 
 		// The FAT spec says there is actually a third boot sector with just a signature word.
 		tmpOffset = curOffset + (2 * bytesPerSec) + bytesPerSec - 2;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
+		res = dev.fillAndWrite(&bs.sigWord, tmpOffset, 2);
 		if(res != 0) return res;
 
 		// Write copy of boot sector.
 		tmpOffset += 2 + (3 * bytesPerSec);
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs), tmpOffset, sizeof(BootSec));
+		res = dev.fillAndWrite(&bs, tmpOffset, sizeof(BootSec));
 		if(res != 0) return res;
 
 		// Write sector signature word of boot sector copy.
 		if(bytesPerSec > 512)
 		{
 			tmpOffset += bytesPerSec - 2;
-			res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
+			res = dev.fillAndWrite(&bs.sigWord, tmpOffset, 2);
 			if(res != 0) return res;
 		}
 
 		// Free cluster count is unknown for FSInfo copy.
 		fsInfo.freeCount = FS_INFO_UNK_FREE_COUNT;
-		res = dev.write(reinterpret_cast<u8*>(&fsInfo), sizeof(FsInfo));
+		res = dev.write(&fsInfo, sizeof(FsInfo));
 		if(res != 0) return res;
 
 		// Write copy of third sector signature word.
 		tmpOffset = curOffset + (8 * bytesPerSec) + bytesPerSec - 2;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&bs.sigWord), tmpOffset, 2);
+		res = dev.fillAndWrite(&bs.sigWord, tmpOffset, 2);
 		if(res != 0) return res;
 	}
 
@@ -262,12 +263,12 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 
 	// Write first FAT.
 	curOffset += rsvdSecCnt * bytesPerSec;
-	res = dev.fillAndWrite(reinterpret_cast<u8*>(fat), curOffset, rsvdEntrySize);
+	res = dev.fillAndWrite(fat, curOffset, rsvdEntrySize);
 	if(res != 0) return res;
 
 	// Write second FAT.
 	curOffset += secPerFat * bytesPerSec;
-	res = dev.fillAndWrite(reinterpret_cast<u8*>(fat), curOffset, rsvdEntrySize);
+	res = dev.fillAndWrite(fat, curOffset, rsvdEntrySize);
 	if(res != 0) return res;
 
 	// Create volume label entry in root directory if needed.
@@ -278,7 +279,7 @@ int makeFsFat(const FormatParams &params, BufferedFsWriter &dev, const std::stri
 		dir.attr = DIR_ATTR_VOLUME_ID;
 
 		curOffset += secPerFat * bytesPerSec;
-		res = dev.fillAndWrite(reinterpret_cast<u8*>(&dir), curOffset, sizeof(FatDirEnt));
+		res = dev.fillAndWrite(&dir, curOffset, sizeof(FatDirEnt));
 		if(res != 0) return res;
 	}
 

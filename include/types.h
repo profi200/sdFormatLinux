@@ -1,6 +1,7 @@
 #pragma once
 
 // SPDX-License-Identifier: MIT
+// Copyright (c) 2023 profi200
 
 #include <cstdint>
 #include <cinttypes>
@@ -16,12 +17,12 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
-typedef volatile uint8_t  vu8;
-typedef volatile uint16_t vu16;
-typedef volatile uint32_t vu32;
-typedef volatile uint64_t vu64;
+typedef volatile u8  vu8;
+typedef volatile u16 vu16;
+typedef volatile u32 vu32;
+typedef volatile u64 vu64;
 
-typedef volatile int8_t  vs8;
-typedef volatile int16_t vs16;
-typedef volatile int32_t vs32;
-typedef volatile int64_t vs64;
+typedef volatile s8  vs8;
+typedef volatile s16 vs16;
+typedef volatile s32 vs32;
+typedef volatile s64 vs64;

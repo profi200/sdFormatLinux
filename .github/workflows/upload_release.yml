@@ -1,0 +1,25 @@
+name: upload_release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 1
+        submodules: recursive
+
+    - name: make
+      run: make release
+
+    - name: Upload to release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        7z a -mx -m0=LZMA ./sdFormatLinux_"$GITHUB_REF_NAME".7z ./sdFormatLinux ./LICENSE.txt
+        gh release upload "$GITHUB_REF_NAME" ./sdFormatLinux_"$GITHUB_REF_NAME".7z

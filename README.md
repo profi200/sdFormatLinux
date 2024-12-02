@@ -22,6 +22,8 @@ A: Because most of these tools are not designed for flash based media and will f
 There is a common myth that you should only use 32 KB (actually KiB) clusters which is false. sdFormatLinux will use 64 KiB clusters when formatting SDXC cards to FAT32 and it works in every device compliant to Microsoft's FAT specification.
 
 ## Benchmark results
+The benchmarks show a difference in the random read/write speeds with exFAT performing best for this 64 GB microSD followed by sdFormatLinux with optimized FAT32 layout.
+
 guiformat with 32 KiB clusters:  
 ![guiformat 32 KiB clusters](https://github.com/profi200/sdFormatLinux/blob/master/res/guiformat_32KiB.png?raw=true "guiformat 32 KiB clusters")
 

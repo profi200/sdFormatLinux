@@ -21,6 +21,19 @@ Erase and format a SDXC card to FAT32 (64 KiB clusters).
 A: Because most of these tools are not designed for flash based media and will format them incorrectly causing lower lifespan and performance.  
 There is a common myth that you should only use 32 KB (actually KiB) clusters which is false. sdFormatLinux will use 64 KiB clusters when formatting SDXC cards to FAT32 and it works in every device compliant to Microsoft's FAT specification.
 
+## Benchmark results
+guiformat with 32 KiB clusters:  
+![guiformat 32 KiB clusters](https://github.com/profi200/sdFormatLinux/blob/master/res/guiformat_32KiB.png?raw=true "guiformat 32 KiB clusters")
+
+guiformat with 64 KiB clusters:  
+![guiformat 64 KiB clusters](https://github.com/profi200/sdFormatLinux/blob/master/res/guiformat_64KiB.png?raw=true "guiformat 64 KiB clusters")
+
+sdFormatLinux with FAT32 and 64 KiB clusters:  
+![sdFormatLinux FAT32 64 KiB clusters](https://github.com/profi200/sdFormatLinux/blob/master/res/sdFormatLinux_force_FAT32_64KiB.png?raw=true "sdFormatLinux FAT32 64 KiB clusters")
+
+SDFormatter with exFAT and 128 KiB clusters:  
+![SDFormatter exFAT 128 KiB clusters](https://github.com/profi200/sdFormatLinux/blob/master/res/SDFormatter_exFAT_128KiB.png?raw=true "SDFormatter exFAT 128 KiB clusters")
+
 ## Compiling
 Just run `make`. It automatically builds a hardened version.
 
